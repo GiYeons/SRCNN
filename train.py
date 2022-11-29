@@ -17,6 +17,7 @@ import cv2
 from matlab import *
 from skimage.io import imread
 from skimage.color import rgb2ycbcr
+import gc
 
 from datasets import Generator
 from torchvision.utils import save_image
@@ -27,7 +28,7 @@ from utils import *
 if __name__=="__main__":
 
     scales = [2]
-    learnig_rate = 1e-4
+    learnig_rate = 7e-4
     batch_size = 64
     epochs = 80
     iterations = 13000
@@ -36,7 +37,8 @@ if __name__=="__main__":
     r = 4
     th = 0.04
     dilker = 3
-    dilation = True
+    dilation = False
+    eval = False
 
     train_path = 'dataset/LR_HR/scale_x2/dataset_cpy1.h5'
     val_path = '/home/wstation/Set5/'
@@ -71,12 +73,15 @@ if __name__=="__main__":
 
             # prop
             optimizer.zero_grad()
-            outputs = model(lr, eval=False)
+            outs = model(lr, eval=eval)
+            outputs = outs
             loss = criterion(outputs, hr)
 
             #backprop
-            loss.backward()
-            optimizer.step()
+            loss_limit = 10
+            if float(loss) < loss_limit and float(loss) > -loss_limit:
+                loss.backward()
+                optimizer.step()
 
             #scheduler update
             learnig_rate = scheduler.get_last_lr()[0]
@@ -87,6 +92,7 @@ if __name__=="__main__":
 
         avg_loss = avg_loss / iterations
         progress_bar(iterations, iterations, avg_loss)
+
 
         ############validation#############
         model.eval()
@@ -109,8 +115,8 @@ if __name__=="__main__":
                     lr = np.expand_dims(lr, axis=0)   # 텐서 계산을 위해 차원 확장
                     lr = torch.from_numpy(lr).float().to(device)
 
-                    output = model(lr, eval=False)
-                    output = output.cuda().data.cpu().numpy()
+                    out = model(lr, eval=eval)
+                    output = out.cuda().data.cpu().numpy()
 
                     hr = convertDouble2Byte(hr)
                     output = convertDouble2Byte(output)
@@ -120,11 +126,13 @@ if __name__=="__main__":
 
                     avg_psnr += PSNR(hr, output, boundary=scale)
                 avg_psnr = avg_psnr / len(images)
+                all_scales_avg_psnr += avg_psnr
                 print(' - x' + str(scale) + '_val_psnr: {:.5f}'.format(avg_psnr), end=' ')
-            all_scales_avg_psnr = avg_psnr / len(scales)
+            all_scales_avg_psnr = all_scales_avg_psnr / len(scales)
 
             if best_psnr < all_scales_avg_psnr:
                 best_weight = model.state_dict()
+                best_psnr = all_scales_avg_psnr
 
         print('- lr: {:.7f}'.format(float(learnig_rate)), end=' ')
         end = time.time()

@@ -24,55 +24,24 @@ from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from utils import *
 from model import Net
+from skimage.feature import canny
+from skimage import io
 
 
-# t = torch.tensor([[
-#     [[1,2],
-#     [3,4,]]]])
-# print(t)
-# t = t.repeat(1,4,1,1)
-# print(t)
-# t = F.pixel_shuffle(t, 2)
-# print(t)
+bird = io.imread('/home/wstation/Set5/bird.bmp')
+bird = rgb2ycbcr(bird)[:, :, 0]
+edges = canny(bird, 4).astype(float)
+edges = np.expand_dims(edges, axis=(0, 1))
+edges = torch.tensor(edges)
+
+edges = F.max_pool2d(edges, kernel_size=3, stride=1, padding=3//2)
+edges = edges.numpy()[0, 0]
+
+bird2 = imread('/home/wstation/Set5/bird.bmp')
 
 
-############## decision mask test #############
-# plt.subplot(1,2,1)
-# imshow(img, cmap='gray')
-# img = np.moveaxis(img, 2, 0)
-# img = torch.tensor(img).float() / 255.
-# blur = F.avg_pool2d(img, kernel_size=3, stride=1, padding=3//2, count_include_pad=False)
-# mask = torch.where(torch.abs(img-blur) >= 0.04, 1, 0).float()
-# mask = F.max_pool2d(mask.float(), kernel_size=3, padding=3//2)
-#
-# mask = np.moveaxis(mask.numpy(), 0, 2)
-# plt.subplot(1,2,2)
-# imshow(mask)
-# plt.show()
-
-# model = Net(2)
-# outputs = model(img, 0.04, 3)
-# print(outputs)
-
-
-################ convTranspose2d test ####################
-# class Net(nn.Module):
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.trans2d = nn.ConvTranspose2d(
-#             in_channels=1, out_channels=1, kernel_size=3, padding=1, stride=2, bias=False)
-#
-#         self.trans2d.weight.data = nn.Parameter(torch.tensor([[[[0.1,0.2,0.3], [0.4,0.5,0.6]]]], dtype=torch.float32))
-#
-#     def forward(self, x):
-#         y = self.trans2d(x)
-#         return y
-#
-#
-# t = torch.tensor([[[[1,2,3], [4,5,6]]]], dtype=torch.float32)
-# model = Net()
-# for param in model.parameters():
-#     print(param)
-#
-# output = model(t)
-# print(output)
+fig, ax = plt.subplots(figsize=(4, 3))
+ax.imshow(edges, cmap=plt.cm.gray)
+ax.set_title('Canny detector')
+ax.axis('off')
+plt.show()

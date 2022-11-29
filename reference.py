@@ -121,3 +121,89 @@
 # 33.662560258929304
 # SRCNN 논문: 33.66
 
+
+## transposed convolution 테스트
+# img = torch.randn(1 ,50 ,28 ,28)
+# kernel = torch.randn(30,50 ,3 ,3)
+# true_convt2d = F.conv_transpose2d(img, kernel.transpose(0,1))
+#
+# pad0 = 3-1 # to explicitly show calculation of convtranspose2d padding
+# pad1 = 3-1
+# inp_unf = torch.nn.functional.unfold(img, (3,3), padding=(pad0,pad1))
+# print(inp_unf.shape, inp_unf[:, :1, :50])
+# w = torch.rot90(kernel, 2, [2,3])
+# # this is done the same way as forward convolution
+# out_unf = inp_unf.transpose(1, 2).matmul(w.view(w.size(0), -1).t()).transpose(1, 2)
+# out = out_unf.view(true_convt2d.shape)
+# print((true_convt2d-out).abs().max())
+# print(true_convt2d.abs().max())
+
+
+# t = torch.arange(0, 50).reshape((2,1,5,5))
+# par = torch.arange(0,9).reshape((3,3))
+# print(t)
+# t3 = t.unfold(2,3,1).unfold(3,3,1)
+# # print("UNFOLD1\n", t2)
+# # t3 = t.
+# print("UNFOLD2\n", t3)
+# print(t3.shape)
+# t3 = t3.transpose(0,1)
+# print("transpose: ", t3.shape, t3)
+#
+# t3 = t3.contiguous().view(1,-1, 3,3)
+# print("patches", t3)
+# t3 = t3.transpose(0,1)
+# print("last transpose", t3.shape, t3)
+# print(t3[0])
+
+
+# t = torch.tensor([[
+#     [[1,2],
+#     [3,4,]]]])
+# print(t)
+# t = t.repeat(1,4,1,1)
+# print(t)
+# t = F.pixel_shuffle(t, 2)
+# print(t)
+
+
+############## decision mask test #############
+# plt.subplot(1,2,1)
+# imshow(img, cmap='gray')
+# img = np.moveaxis(img, 2, 0)
+# img = torch.tensor(img).float() / 255.
+# blur = F.avg_pool2d(img, kernel_size=3, stride=1, padding=3//2, count_include_pad=False)
+# mask = torch.where(torch.abs(img-blur) >= 0.04, 1, 0).float()
+# mask = F.max_pool2d(mask.float(), kernel_size=3, padding=3//2)
+#
+# mask = np.moveaxis(mask.numpy(), 0, 2)
+# plt.subplot(1,2,2)
+# imshow(mask)
+# plt.show()
+
+# model = Net(2)
+# outputs = model(img, 0.04, 3)
+# print(outputs)
+
+
+################ convTranspose2d test ####################
+# class Net(nn.Module):
+#     def __init__(self):
+#         super(Net, self).__init__()
+#         self.trans2d = nn.ConvTranspose2d(
+#             in_channels=1, out_channels=1, kernel_size=3, padding=1, stride=2, bias=False)
+#
+#         self.trans2d.weight.data = nn.Parameter(torch.tensor([[[[0.1,0.2,0.3], [0.4,0.5,0.6]]]], dtype=torch.float32))
+#
+#     def forward(self, x):
+#         y = self.trans2d(x)
+#         return y
+#
+#
+# t = torch.tensor([[[[1,2,3], [4,5,6]]]], dtype=torch.float32)
+# model = Net()
+# for param in model.parameters():
+#     print(param)
+#
+# output = model(t)
+# print(output)

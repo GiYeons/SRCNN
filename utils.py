@@ -9,6 +9,12 @@ def d2bytes(I): # 0~1사이 값을 받아 클리핑, 0~255로 리턴
     B = 255.0 * B
     return np.around(B).astype(np.uint8)
 
+def rgb2y_uint8(rgb):
+    y = (rgb[:, :, 0] * np.array([0.256789])) + (rgb[:, :, 1] * np.array([0.504129])) + (rgb[:, :, 2] * np.array([0.097906])) + 16
+    y = np.clip(y, 0.0, 255)
+    y =  np.around(y).astype(np.uint8)
+
+    return y
 
 def PSNR(label, outputs, boundary=0):
     # label = d2bytes(label)
@@ -55,3 +61,11 @@ def progress_bar(batch, n_steps, loss):
     print(']', end=' ')
 
     print('- loss: {:.5f} - psnr: {:.4f}'.format(loss, train_psnr(loss)), end='')
+
+def clock(seconds):
+    if seconds < 60:
+        return 0, seconds
+
+    min = int(seconds / 60)
+    sec = seconds % 60
+    return min, sec
