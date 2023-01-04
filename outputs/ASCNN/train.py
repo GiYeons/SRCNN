@@ -45,7 +45,7 @@ if __name__=="__main__":
     output_path = '/outputs'
 
     device = torch.device('cuda')
-    model = Net(scales[0], r=r).float()
+    model = Net(scales[0]).float()
     model.to(device)
     print('Computation device: ', device)
     print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
@@ -92,8 +92,6 @@ if __name__=="__main__":
 
         avg_loss = avg_loss / iterations
         progress_bar(iterations, iterations, avg_loss)
-        best_weight = model.state_dict()
-        torch.save(best_weight, 'outputs/model.pth')
 
 
         ############validation#############

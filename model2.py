@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import math as math
 from matlab import imresize
 
+
 class Tconv_block(nn.Module):
     def __init__(self, scale, in_c, out_c, ker, r):
         super(Tconv_block, self).__init__()
@@ -11,19 +12,22 @@ class Tconv_block(nn.Module):
         self.ker = ker
 
         self.high_par = nn.ConvTranspose2d(
-            in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker//2, stride=scale, output_padding=scale-1)
+            in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
+            output_padding=scale - 1)
 
         self.low_par1 = nn.Conv2d(
-            in_channels=in_c, out_channels=in_c//r, kernel_size=1)
+            in_channels=in_c, out_channels=in_c // r, kernel_size=1)
         self.low_par2 = nn.ConvTranspose2d(
-            in_channels=in_c//r, out_channels=out_c, kernel_size=ker, padding=ker//2, stride=scale, output_padding=scale-1)
+            in_channels=in_c // r, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
+            output_padding=scale - 1)
 
         for m in self.modules():
             if isinstance(m, nn.ConvTranspose2d):
                 torch.nn.init.normal_(m.weight.data, mean=0.0, std=0.001)
                 nn.init.zeros_(m.bias.data)
             if isinstance(m, nn.Conv2d):
-                torch.nn.init.normal_(m.weight.data, mean=0.0, std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
+                torch.nn.init.normal_(m.weight.data, mean=0.0,
+                                      std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
                 nn.init.zeros_(m.bias.data)
 
         # ===========
@@ -32,9 +36,10 @@ class Tconv_block(nn.Module):
 
     def expand_hw(self, x):
         b, c, h, w = x.shape
-        x = F.conv_transpose2d(x, self.ones[0:c], stride=(self.scale, self.scale), output_padding=self.scale-1, groups=c)
+        x = F.conv_transpose2d(x, self.ones[0:c], stride=(self.scale, self.scale), output_padding=self.scale - 1,
+                               groups=c)
         return x
-                
+
     def tconv_to_conv_par(self, par):
         par = torch.rot90(par, 2, [2, 3])
         par = par.transpose(0, 1)
@@ -67,7 +72,7 @@ class Tconv_block(nn.Module):
         return y
 
     def forward(self, x, mask, inv_mask, eval=False):
-        if eval==True:
+        if eval == True:
             return self.eval_forward(x, mask, inv_mask)
 
         high = self.high_par(x) * mask
@@ -85,7 +90,7 @@ class Conv_block(nn.Module):
 
         self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
         self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
-        # self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
+        self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -100,31 +105,33 @@ class Conv_block(nn.Module):
         low_par2 = self.low_par2.weight
         cout, cin, ker, ker = high_par.data.shape
 
-        patches = F.pad(x, pad=(ker//2, ker//2,ker//2, ker//2))
+        patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
         patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
-        patches = patches.transpose(0,1)
+        patches = patches.transpose(0, 1)
         patches = patches.contiguous().view(cin, -1, ker, ker)
-        patches = patches.transpose(0,1)
+        patches = patches.transpose(0, 1)
 
         patches_out = patches.new(b * h * w, cout, 1, 1)
         patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
         patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
         patches = patches_out
 
-        patches = patches.view(b, h*w, cout)
-        patches = patches.transpose(2,1)
+        patches = patches.view(b, h * w, cout)
+        patches = patches.transpose(2, 1)
         y = F.fold(patches, (h, w), (1, 1))
 
         return y
 
-    def forward(self, x, mask, inv_mask, eval=False):
+    def forward(self, x, mask, inv_mask, eval=False, bypass=True):
         if eval == True:
             return self.eval_forward(x, mask_idx=mask, inv_mask_idx=inv_mask)
 
         high = self.high_par(x) * mask
-        low = self.low_par1(x) * inv_mask
-        low = self.low_par2(low)
-        # low = self.low_par(x * inv_mask)
+        if bypass:
+            low = self.low_par1(x) * inv_mask
+            low = self.low_par2(low)
+        else:
+            low = self.low_par(x * inv_mask)
 
         return low + high
 
@@ -147,24 +154,23 @@ class Net(nn.Module):
 
         self.relu = nn.ReLU(inplace=True)
 
-
     def create_mask(self, x, th, dilker, dilation=True):
-        blur = F.avg_pool2d(x, kernel_size=3, stride=1, padding=3//2, count_include_pad=False)
-        mask = torch.where(torch.abs(x-blur) >= th, 1, 0).float()
+        blur = F.avg_pool2d(x, kernel_size=3, stride=1, padding=3 // 2, count_include_pad=False)
+        mask = torch.where(torch.abs(x - blur) >= th, 1, 0).float()
 
-        if dilation==True:
+        if dilation == True:
             mask = self.dilate_mask(mask, dilker)
-        inv_mask = torch.where(mask==1, 0, 1).float()
+        inv_mask = torch.where(mask == 1, 0, 1).float()
 
         return mask, inv_mask
 
     def dilate_mask(self, mask, dilker):
-        mask = F.max_pool2d(mask.float(), kernel_size=dilker, stride=1, padding=dilker//2)
+        mask = F.max_pool2d(mask.float(), kernel_size=dilker, stride=1, padding=dilker // 2)
         return mask
 
     def get_mask_index(self, mask):
         mask = torch.flatten(mask)
-        inv_mask = torch.where(mask==1, 0, 1)
+        inv_mask = torch.where(mask == 1, 0, 1)
 
         mask_idx = torch.nonzero(mask)[:, 0]
         inv_mask_idx = torch.nonzero(inv_mask)[:, 0]
@@ -172,18 +178,16 @@ class Net(nn.Module):
         return mask_idx, inv_mask_idx
 
     def upsample_mask(self, mask):
-        mask = mask.repeat(1, self.scale**2, 1, 1)
+        mask = mask.repeat(1, self.scale ** 2, 1, 1)
         mask = F.pixel_shuffle(mask, self.scale)
-        inv_mask = torch.where(mask==1, 0, 1)
+        inv_mask = torch.where(mask == 1, 0, 1)
         return mask, inv_mask
-
 
     def eval_forward(self, x, th=0.04, dilker=3, dilation=True):
         mask, inv_mask = self.create_mask(x, th, dilker, dilation)
         mask_idx, inv_mask_idx = self.get_mask_index(mask)
 
-
-        x = self.relu(self.first_part(x,mask_idx, inv_mask_idx, eval=True))
+        x = self.relu(self.first_part(x, mask_idx, inv_mask_idx, eval=True))
         x = self.relu(self.reduction(x, mask_idx, inv_mask_idx, eval=True))
 
         x = self.relu(self.mid_part1(x, mask_idx, inv_mask_idx, eval=True))
@@ -219,8 +223,6 @@ class Net(nn.Module):
 
         mask, inv_mask = self.upsample_mask(mask)
         y = self.last_part(x, mask, inv_mask, eval=False)
-
-
 
         return y
 

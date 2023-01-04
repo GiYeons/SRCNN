@@ -31,7 +31,7 @@ if __name__=="__main__":
     learnig_rate = 7e-4
     batch_size = 64
     epochs = 80
-    iterations = 13000
+    iterations = 7000
     num_worker = 10
 
     r = 4
@@ -45,7 +45,7 @@ if __name__=="__main__":
     output_path = '/outputs'
 
     device = torch.device('cuda')
-    model = Net(scales[0], r=r).float()
+    model = Net(scales[0], num_filters1=32, num_filters2=64, r=r).float()
     model.to(device)
     print('Computation device: ', device)
     print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
@@ -92,8 +92,6 @@ if __name__=="__main__":
 
         avg_loss = avg_loss / iterations
         progress_bar(iterations, iterations, avg_loss)
-        best_weight = model.state_dict()
-        torch.save(best_weight, 'outputs/model.pth')
 
 
         ############validation#############
@@ -142,5 +140,5 @@ if __name__=="__main__":
 
     print(f"Max val PSNR: {best_psnr}")
     print('Saving model...')
-    torch.save(best_weight, 'outputs/model.pth')
+    torch.save(best_weight, 'outputs/model2.pth')
 
