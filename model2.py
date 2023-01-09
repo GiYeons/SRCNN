@@ -10,7 +10,7 @@ class Tconv_block(nn.Module):
         super(Tconv_block, self).__init__()
         self.scale = scale
         self.ker = ker
-        # r = 4 # 수정
+        # r = 4 # r=16,Tconv r=4.pth
         self.high_par = nn.ConvTranspose2d(
             in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
             output_padding=scale - 1)
@@ -122,7 +122,7 @@ class Conv_block(nn.Module):
 
         return y
 
-    def forward(self, x, mask, inv_mask, eval=False):
+    def forward(self, x, mask, inv_mask, eval=False, bypass=False):
         if eval == True:
             return self.eval_forward(x, mask_idx=mask, inv_mask_idx=inv_mask)
 

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from utils import PSNR, rgb2y_uint8, SSIM
 from torchvision.utils import save_image
+from torchsummary import summary as summary
 
 # import the network we want to predict for
 from model2 import Net
@@ -47,7 +48,7 @@ def val_psnr(model, th, dilker, dilation, val_path, scale):
 
             avg_ssim +=SSIM(output, hr, scale)
             avg_psnr += PSNR(hr, output, boundary=scale)
-            print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=scale))
+            # print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=scale))
 
 
     # print(round(avg_ssim/len(images), 4), end=' ')
@@ -70,7 +71,7 @@ dir_n = 'outputs/ASCNN/'
 # ths = [0.021, 0.05, 0.084, 0.13]
 # ths = [0.03, 0.05, 0.07, 0.09]
 
-paths = ['baseline']
+paths = ['allLowBypass']
 
 # ths = [0.01, 0.04, 0.07, 0.10]
 # ths = [0]
@@ -79,9 +80,14 @@ dilation= True
 dilker = 3
 
 scale = 2
-r = 16
+r = 4
 model = Net(scale, r=r).float().to(device)
 print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
+
+# for name, param in model.named_parameters():
+#     if "low_par" in name and "weight" in name:
+#         print(name)
+#         print(param.size())
 
 
 '''
@@ -102,6 +108,6 @@ for set in sets:
         th = ths[idx]
 
         result1, result2 = val_psnr(model, th, dilker, dilation, val_path, scale)
-        # print(round(result1, 5), end='/')
-        # print(round(result2, 4), end='')
+        print(round(result1, 5), end='/')
+        print(round(result2, 4), end='')
     print(end='\t')
