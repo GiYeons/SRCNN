@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-from model import Net
+from model2 import Net
 import random
 import numpy as np
 import math
@@ -31,7 +31,7 @@ if __name__=="__main__":
     learnig_rate = 7e-4
     batch_size = 64
     epochs = 80
-    iterations = 7000
+    iterations = 13000
     num_worker = 10
 
     r = 4
@@ -45,7 +45,7 @@ if __name__=="__main__":
     output_path = '/outputs'
 
     device = torch.device('cuda')
-    model = Net(scales[0], num_filters1=32, num_filters2=64, r=r).float()
+    model = Net(scales[0], r=r).float() #  num_filters1=32, num_filters2=64,
     model.to(device)
     print('Computation device: ', device)
     print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
@@ -57,10 +57,11 @@ if __name__=="__main__":
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=(epochs*iterations), eta_min=1e-10)
 
     best_psnr = 0
-
+    flag = True
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1} of {epochs}")
-
+        if not flag:
+            break
         #############train##############
         model.train()
         avg_loss = 0.
@@ -133,6 +134,8 @@ if __name__=="__main__":
             if best_psnr < all_scales_avg_psnr:
                 best_weight = model.state_dict()
                 best_psnr = all_scales_avg_psnr
+            if best_psnr >= 36.7568:
+                flag=False
 
         print('- lr: {:.7f}'.format(float(learnig_rate)), end=' ')
         end = time.time()

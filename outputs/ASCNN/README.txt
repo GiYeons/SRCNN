@@ -1,4 +1,4 @@
-ASCNN_37.14917319500478
+ASCNN_37.1481
 
 scales = [2]
     learnig_rate = 7e-4

@@ -4,7 +4,6 @@ import torch
 import matplotlib
 import matplotlib.pyplot as plt
 import h5py
-import baseline
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,11 +22,11 @@ from tqdm import tqdm
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from utils import *
-from model import Net
+from baseline import Net
 from skimage.feature import canny
 from skimage import io
 
-bird = io.imread('/home/wstation/Set5/bird.bmp')
+bird = io.imread('/home/wstation/Set5/head.bmp')
 bird = rgb2ycbcr(bird)[:, :, 0:1] / 255.
 bird = imresize(bird, scalar_scale=1 / 2, method='bicubic')
 bird2 = np.expand_dims(np.moveaxis(bird, 2,0), axis=0)
@@ -40,7 +39,7 @@ mask2 = np.where(mask>0.04, 1, 0)
 mask2 = F.max_pool1d(torch.tensor(mask2).float(), kernel_size=3, stride=1, padding=3//2)
 mask2 = mask2.numpy()
 mask3 = np.where(mask2==1, 0, 1)
-mask3 = np.where((mask3==1) & (mask>0.02), 1, 0)
+mask3 = np.where((mask3==1) & (mask>0.01), 1, 0)
 
 
 print(mask3.shape)
@@ -48,11 +47,11 @@ print(mask3.shape)
 
 
 plt.subplot(131)
-plt.imshow(bird, cmap='gray')
+plt.imshow(blur, cmap='gray')
 plt.title('original')
 plt.axis('off')
 plt.subplot(132)
-plt.imshow(blur, cmap='gray')
+plt.imshow(mask2, cmap='gray')
 plt.title('max_pooling')
 plt.axis('off')
 plt.subplot(133)

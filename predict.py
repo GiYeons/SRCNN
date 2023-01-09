@@ -5,11 +5,12 @@ from skimage.color import rgb2ycbcr
 import numpy as np
 import torch
 from utils import PSNR, rgb2y_uint8, SSIM
+from torchvision.utils import save_image
 
 # import the network we want to predict for
-from test_ASCNN import Net
+from model2 import Net
 
-def val_psnr(model, th, dilker, dilation, val_path, scale, no_mask=False):
+def val_psnr(model, th, dilker, dilation, val_path, scale):
     images = sorted(os.listdir(val_path))
     avg_psnr = 0
     avg_ssim = 0
@@ -17,7 +18,12 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, no_mask=False):
     with torch.no_grad():
         for image in images:
             img = imread(val_path + image)
-            img = rgb2ycbcr(img)[:, :, 0:1]
+
+            try:
+                img = rgb2ycbcr(img)[:, :, 0:1]
+            except:
+                img = np.expand_dims(img, axis=-1)
+
             img = np.float64(img) / 255.
             height, width, channel = img.shape
 
@@ -28,8 +34,10 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, no_mask=False):
             lr = np.expand_dims(lr, axis=0)  # 텐서 계산을 위해 차원 확장
             lr = torch.from_numpy(lr).float().to(device)
 
-            out = model(lr, no_mask=no_mask)
-            output = out.cuda().data.cpu().numpy()
+            out = model(lr)
+            output = out.cuda().data.cpu()
+            # save_image(output, f"{image}.png")
+            output = output.numpy()
 
             hr = d2int(hr)
             output = d2int(output)
@@ -48,7 +56,7 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, no_mask=False):
 device = torch.device('cuda')
 
 
-sets = ['Set5/'] #, 'Set14/', 'BSDS100/', 'Urban100/', 'DIV2K_val/'''
+sets = ['Set14/'] #, 'Set14/', 'BSDS100/', 'Urban100/', 'DIV2K_val/'''
 dir_n = 'outputs/ASCNN/'
 # paths = ['sp_02_dilk7', 'sp_04_dilk7', 'sp_06_dilk7', 'sp_08_dilk7']
 # paths = ['sp_02_dilk3', 'sp_04_dilk3', 'sp_06_dilk3', 'sp_08_dilk3']
@@ -62,7 +70,7 @@ dir_n = 'outputs/ASCNN/'
 # ths = [0.021, 0.05, 0.084, 0.13]
 # ths = [0.03, 0.05, 0.07, 0.09]
 
-paths = ['model']
+paths = ['baseline']
 
 # ths = [0.01, 0.04, 0.07, 0.10]
 # ths = [0]
@@ -71,8 +79,9 @@ dilation= True
 dilker = 3
 
 scale = 2
-r = 4
-model = Net(scale).float().to(device)
+r = 16
+model = Net(scale, r=r).float().to(device)
+print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
 
 
 '''
@@ -92,13 +101,7 @@ for set in sets:
         val_path = '/home/wstation/' + set
         th = ths[idx]
 
-        print('apply mask')
         result1, result2 = val_psnr(model, th, dilker, dilation, val_path, scale)
-        print(round(result1, 5), end='/')
-        print(round(result2, 4), end='')
-        print()
-        print('no mask')
-        result3, result4 = val_psnr(model, th, dilker, dilation, val_path, scale, no_mask=True)
-        print(round(result3, 5), end='/')
-        print(round(result4, 4), end='')
+        # print(round(result1, 5), end='/')
+        # print(round(result2, 4), end='')
     print(end='\t')

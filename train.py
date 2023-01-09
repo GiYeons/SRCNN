@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-from model import Net
+from baseline import Net
 import random
 import numpy as np
 import math
@@ -34,7 +34,7 @@ if __name__=="__main__":
     iterations = 13000
     num_worker = 10
 
-    r = 4
+    r = 16
     th = 0.04
     dilker = 3
     dilation = False
@@ -92,8 +92,6 @@ if __name__=="__main__":
 
         avg_loss = avg_loss / iterations
         progress_bar(iterations, iterations, avg_loss)
-        best_weight = model.state_dict()
-        torch.save(best_weight, 'outputs/model.pth')
 
 
         ############validation#############

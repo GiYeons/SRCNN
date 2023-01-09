@@ -10,7 +10,7 @@ class Tconv_block(nn.Module):
         super(Tconv_block, self).__init__()
         self.scale = scale
         self.ker = ker
-
+        # r = 4 # 수정
         self.high_par = nn.ConvTranspose2d(
             in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
             output_padding=scale - 1)
@@ -88,8 +88,8 @@ class Conv_block(nn.Module):
 
         self.high_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2)
 
-        self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
-        self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
+        # self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
+        # self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
         self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
 
         for m in self.modules():
@@ -122,16 +122,14 @@ class Conv_block(nn.Module):
 
         return y
 
-    def forward(self, x, mask, inv_mask, eval=False, bypass=True):
+    def forward(self, x, mask, inv_mask, eval=False):
         if eval == True:
             return self.eval_forward(x, mask_idx=mask, inv_mask_idx=inv_mask)
 
         high = self.high_par(x) * mask
-        if bypass:
-            low = self.low_par1(x) * inv_mask
-            low = self.low_par2(low)
-        else:
-            low = self.low_par(x * inv_mask)
+        # low = self.low_par1(x) * inv_mask
+        # low = self.low_par2(low)
+        low = self.low_par(x * inv_mask)
 
         return low + high
 
@@ -209,7 +207,6 @@ class Net(nn.Module):
 
         mask, inv_mask = self.create_mask(x, th, dilker, dilation)
 
-        orix = x
 
         x = self.relu(self.first_part(x, mask, inv_mask, eval=False))
         x = self.relu(self.reduction(x, mask, inv_mask, eval=False))
