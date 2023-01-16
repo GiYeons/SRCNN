@@ -25,9 +25,13 @@ from utils import *
 from baseline import Net
 from skimage.feature import canny
 from skimage import io
+from predict import predict
 
-bird = io.imread('/home/wstation/Set5/head.bmp')
-bird = rgb2ycbcr(bird)[:, :, 0:1] / 255.
+
+
+img = io.imread('/home/wstation/Set5/bird.bmp')
+img = rgb2ycbcr(img)[:128, :128, 0:1]
+bird = img / 255.
 bird = imresize(bird, scalar_scale=1 / 2, method='bicubic')
 bird2 = np.expand_dims(np.moveaxis(bird, 2,0), axis=0)
 bird2 = torch.tensor(bird2)
@@ -39,27 +43,28 @@ mask2 = np.where(mask>0.04, 1, 0)
 mask2 = F.max_pool1d(torch.tensor(mask2).float(), kernel_size=3, stride=1, padding=3//2)
 mask2 = mask2.numpy()
 mask3 = np.where(mask2==1, 0, 1)
-mask3 = np.where((mask3==1) & (mask>0.01), 1, 0)
+mask3 = np.where((mask3==1) & (mask>0.002), 1, 0)
 
 
 print(mask3.shape)
 
 
 
-plt.subplot(131)
+plt.subplot(141)
 plt.imshow(blur, cmap='gray')
 plt.title('original')
 plt.axis('off')
-plt.subplot(132)
+plt.subplot(142)
 plt.imshow(mask2, cmap='gray')
-plt.title('max_pooling')
+plt.title('high frequency')
 plt.axis('off')
-plt.subplot(133)
+plt.subplot(143)
 plt.imshow(mask3, cmap='gray')
-plt.title('frequency')
+plt.title('low frequency')
 plt.axis('off')
+plt.subplot(144)
+plt.hist(img.ravel(), 256, [0, 256])
 plt.show()
-
 
 # bird = io.imread('/home/wstation/Set5/bird.bmp')
 # bird = rgb2ycbcr(bird)[:, :, 0]

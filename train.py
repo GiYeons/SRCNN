@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-from baseline import Net
+from model import Net
 import random
 import numpy as np
 import math
@@ -23,6 +23,7 @@ from datasets import Generator
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from utils import *
+from torchsummary import summary as summary
 
 
 if __name__=="__main__":
@@ -34,7 +35,7 @@ if __name__=="__main__":
     iterations = 13000
     num_worker = 10
 
-    r = 16
+    r = 4
     th = 0.04
     dilker = 3
     dilation = False
@@ -49,6 +50,7 @@ if __name__=="__main__":
     model.to(device)
     print('Computation device: ', device)
     print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
+
 
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=learnig_rate)

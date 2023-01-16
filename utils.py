@@ -121,10 +121,3 @@ def clock(seconds):
     sec = seconds % 60
     return min, sec
 
-
-def canny(img, th1=0, th2=360):
-    edge_img = cv2.Canny(img, th1, th2)
-    cv2.imwrite('outputs/sample_lr.bmp', img)
-    cv2.imwrite('outputs/sample_edge.bmp', edge_img)
-
-    return edge_img

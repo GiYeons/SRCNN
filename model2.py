@@ -90,7 +90,9 @@ class Conv_block(nn.Module):
 
         # self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
         # self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
-        self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
+        self.low_par = None
+        if in_c!=out_c:
+            self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -122,14 +124,17 @@ class Conv_block(nn.Module):
 
         return y
 
-    def forward(self, x, mask, inv_mask, eval=False, bypass=False):
+    def forward(self, x, mask, inv_mask, eval=False):
         if eval == True:
             return self.eval_forward(x, mask_idx=mask, inv_mask_idx=inv_mask)
 
         high = self.high_par(x) * mask
         # low = self.low_par1(x) * inv_mask
         # low = self.low_par2(low)
-        low = self.low_par(x * inv_mask)
+        if self.low_par != None:
+            low = self.low_par(x * inv_mask)
+        else:
+            low = x * 1.2 * inv_mask
 
         return low + high
 

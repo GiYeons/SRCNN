@@ -57,11 +57,8 @@ if __name__=="__main__":
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=(epochs*iterations), eta_min=1e-10)
 
     best_psnr = 0
-    flag = True
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1} of {epochs}")
-        if not flag:
-            break
         #############train##############
         model.train()
         avg_loss = 0.
@@ -134,8 +131,6 @@ if __name__=="__main__":
             if best_psnr < all_scales_avg_psnr:
                 best_weight = model.state_dict()
                 best_psnr = all_scales_avg_psnr
-            if best_psnr >= 36.7568:
-                flag=False
 
         print('- lr: {:.7f}'.format(float(learnig_rate)), end=' ')
         end = time.time()
