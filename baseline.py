@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import math as math
 from matlab import imresize
 
+'''Tconv는 실험하지 않았으므로 r=4 유지'''
+
 class Tconv_block(nn.Module):
     def __init__(self, scale, in_c, out_c, ker, r):
         super(Tconv_block, self).__init__()

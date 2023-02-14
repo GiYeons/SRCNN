@@ -1,3 +1,22 @@
+
+####### 이미지 visualize #########
+# hr = io.imread('visualize/butterfly.bmp')
+# r4 = io.imread('visualize/r4_butterfly.bmp')
+# r16 = io.imread('visualize/r16_butterfly.bmp')
+# hr = rgb2ycbcr(hr)[:,:,0]
+# r4 = r4[:,:,0].astype('float')
+# r16 = r16[:,:,0].astype('float')
+#
+# boundary = 0
+# # hr = hr[boundary:-boundary, boundary:-boundary]
+# # r4 = r4[boundary:-boundary, boundary:-boundary]
+# # r16 = r16[boundary:-boundary, boundary:-boundary]
+# one = abs(hr-r16)
+# plt.title('hr-r16')
+# plt.imshow(one, cmap='gray')
+# plt.show()
+############################################
+
 # with h5py.File("dataset/train_mscale.h5") as file:
 #     f = file['label']
 #     image = f[0]

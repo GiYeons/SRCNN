@@ -121,3 +121,9 @@ def clock(seconds):
     sec = seconds % 60
     return min, sec
 
+def hamming_distance(a, b): # 수정해서 사용할 것. if dst/총 픽셀수 < 0.25: # 해밍거리 25% 이내만 출력 ---⑨
+    a = a.reshape(1,-1)
+    b = b.reshape(1,-1)
+    # 같은 자리의 값이 서로 다른 것들의 합
+    distance = (a !=b).sum()
+    return distance

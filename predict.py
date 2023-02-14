@@ -14,9 +14,11 @@ from torchsummary import summary as summary
 # import the network we want to predict for
 from baseline import Net
 
+testWord = 'fore'   # line22, 134
 
-def val_psnr(model, th, dilker, dilation, val_path, scale, psnrs):
+def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
     images = sorted(os.listdir(val_path))
+    # images = [s for s in images if testWord in s] #############
     avg_psnr = 0
     avg_ssim = 0
     model.eval()
@@ -41,7 +43,7 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, psnrs):
 
             out = model(lr)
             output = out.cuda().data.cpu()
-            # save_image(output, f"{image}.png")
+            save_image(output, f"outputs/{image.replace('.bmp', '')}.bmp")
             output = output.numpy()
 
             hr = d2int(hr)
@@ -50,11 +52,10 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, psnrs):
             output = output[0]
             output = np.moveaxis(output, 0, -1)
 
-            avg_ssim +=SSIM(output, hr, scale)
-            avg_psnr += PSNR(hr, output, boundary=scale)
-            # print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=scale))
-            psnrs.append(PSNR(hr, output, boundary=scale))
-
+            avg_ssim +=SSIM(output, hr, boundary)
+            avg_psnr += PSNR(hr, output, boundary=boundary)
+            print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=boundary))
+            psnrs.append(PSNR(hr, output, boundary=boundary))
 
     # print(round(avg_ssim/len(images), 4), end=' ')
     return avg_psnr/len(images), avg_ssim/len(images)
@@ -87,6 +88,7 @@ def predict(datasets, model_paths, r=4):
 
     scale = 2
     r = r
+    boundary = scale
     model = Net(scale, r=r).float().to(device)
     print('Number of Parameters:', sum(p.numel() for p in model.parameters()))
 
@@ -106,16 +108,16 @@ def predict(datasets, model_paths, r=4):
     '''
     psnrs = []
     for set in sets:
-        # for idx, path in enumerate(paths):
-        #     path = dir_n + path + '.pth'
-        #     ckpnt = torch.load(path)
-        #     model.load_state_dict(ckpnt)
-        #     val_path = '/home/wstation/' + set
-        #     th = ths[idx]
-        #
-        #     result1, result2 = val_psnr(model, th, dilker, dilation, val_path, scale, psnrs)
-        #     print('avg PSNR:', round(result1, 5), end='/')
-        #     print('avg SSIM:', round(result2, 4))
+        for idx, path in enumerate(paths):
+            path = dir_n + path + '.pth'
+            ckpnt = torch.load(path)
+            model.load_state_dict(ckpnt)
+            val_path = '/home/wstation/TestSet/' + set
+            th = ths[idx]
+
+            result1, result2 = val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs)
+            print('avg PSNR:', round(result1, 5), end='/')
+            print('avg SSIM:', round(result2, 4))
 
     return psnrs
 
@@ -124,21 +126,9 @@ if __name__=="__main__":
     device = torch.device('cuda')
 
     set = 'Set5/'
-    psnrs4 = predict([set], ['baseline'], r=4)
+    # psnrs4 = predict([set], ['baseline'], r=4)
     psnrs16 = predict([set], ['r=16,Tconv r=4'], r=16)
 
-    # diff_psnrs = [p1 - p2 for p1, p2 in zip(psnrs4, psnrs16)]
-    # images = sorted(os.listdir('/home/wstation/'+set))
-    # plt.bar(images, diff_psnrs, width=0.6)
-    # plt.ylim([0, 0.4])
-    # plt.yticks(fontsize=12)
-    # plt.xticks(rotation=45)
-    # plt.title("Difference of PSNR", fontsize=14)
-    #
-    # for i, v in enumerate(images):
-    #     plt.text(v, diff_psnrs[i], str(round(diff_psnrs[i], 2)),
-    #              fontsize=12,
-    #              color="blue",
-    #              horizontalalignment='center',
-    #              verticalalignment='bottom')
-    # plt.show()
+    images = sorted(os.listdir('/home/wstation/TestSet/'+set))
+    # images = [s for s in images if testWord in s]
+

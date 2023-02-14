@@ -42,7 +42,7 @@ if __name__=="__main__":
     eval = False
 
     train_path = 'dataset/LR_HR/scale_x2/dataset_cpy1.h5'
-    val_path = '/home/wstation/Set5/'
+    val_path = '/home/wstation/TestSet/Set5/'
     output_path = '/outputs'
 
     device = torch.device('cuda')
