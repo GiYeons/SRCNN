@@ -146,7 +146,7 @@ class Net(nn.Module):
         return mask, inv_mask
 
     #-----------------------quantization------------------------------
-    # quantized된 weights를 모델의 weights에 대입하는 함수
+    # Functions for assigning quantized weights to the model's weights
     def quantize(self, scheme="uniform", wts_nbit=8, wts_fbit=4):
         self.prepare_q_weight(scheme, wts_nbit, wts_fbit)
 
@@ -156,7 +156,7 @@ class Net(nn.Module):
             self.all_layers[i].low_par2.weight.data = self.quantized_wts[i][2]
             self.all_layers[i].cuda()
 
-    # model의 weight를 original weights로 되돌리는 함수
+    # function to revert the model's weights to the original weights
     def revert(self):
         for i in range(len(self.all_layers) - 1):
             self.all_layers[i].high_par.weight.data = self.origin_wts[i][0]
@@ -164,16 +164,16 @@ class Net(nn.Module):
             self.all_layers[i].low_par2.weight.data = self.origin_wts[i][2]
             self.all_layers[i].cuda()
 
-    # quantized된 weights를 생성하는 함수
+    # function for generating quantized weights
     def prepare_q_weight(self, scheme="uniform", wts_nbit=8, wts_fbit=4):
         self.wts_nbit = wts_nbit
         self.wts_fbit = wts_fbit
 
-        # made for loof
+        # layers for loof
         self.all_layers = nn.Sequential(
             self.first_part, self.reduction, self.mid_part1, self.mid_part2, self.mid_part3, self.mid_part4, self.expansion, self.last_part
         )
-        #TConv에서 high, low weight를 없앴으므로 따로 처리해야 함
+        #TConv에서 high, low weight를 없앴으므로 따로 처리해야 함 (작성예정)
         for i in range(len(self.all_layers) - 1):
             high_wts = self.all_layers[i].high_par.weight.data
             low_wts1 = self.all_layers[i].low_par1.weight.data
@@ -255,6 +255,7 @@ class Net(nn.Module):
 
     def relu_quantize(self, x, step, nbit, bias_shift):
         pos_end = torch.tensor(2 ** nbit - 1).to(x.device)
+        print("relu 전:", x)
 
         activations = x;
         activations = torch.where(activations >= 0, activations / round(2 ** bias_shift * (step)), torch.zeros_like(activations))
