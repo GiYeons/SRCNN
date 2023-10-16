@@ -1,7 +1,6 @@
 __pycache__/
 dataset/
 SRCNN-yjn870/
-outputs/
 test/
 outputs_x3/
-
+visualize/

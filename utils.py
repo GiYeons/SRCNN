@@ -3,6 +3,28 @@ import cv2
 import torch
 import numpy as np
 from math import log10, sqrt
+from skimage.io import imread, imsave
+from matlab import imresize, convertDouble2Byte as d2int
+import torch.nn.functional as F
+
+# class SparseLoss(torch.autograd.Function):
+#     @staticmethod
+#     def forward(ctx, input, target):
+#         ctx.save_for_backward(input, target)
+#         return ((input))
+
+def sparseLoss(input, target, th=0.04, dilker=3, weight1=1., weight2=1.):
+    loss = None
+
+    # create mask
+    blur = F.avg_pool2d(target, kernel_size=3, stride=1, padding=3 // 2, count_include_pad=False)
+    mask = torch.where(torch.abs(target - blur) >= th, weight1, weight2).float()
+    mask = F.max_pool2d(mask.float(), kernel_size=dilker, stride=1, padding=dilker // 2)
+
+    loss = torch.mean(((input - target) * mask)**2)
+
+    return loss
+
 
 def d2bytes(I): # 0~1사이 값을 받아 클리핑, 0~255로 리턴
     B = np.clip(I, 0.0, 1.0)    # min보다 작은 값을 min값으로, max보다 큰 값을 max값으로 바꿔줌
@@ -86,6 +108,28 @@ def PSNR(label, outputs, boundary=0):
 
     return psnr
 
+def PSNR_specific(label, outputs, image, boundary=0):
+
+    mask = imread("masks/" + image)[:, :, 0:1] / 255
+    mask = imresize(mask, scalar_scale=2, method='bicubic')
+    mask = np.where(mask==0, 0, 1)
+
+    if boundary > 0:
+        label = label[boundary:-boundary, boundary:-boundary]
+        outputs = outputs[boundary:-boundary, boundary:-boundary]
+        mask = mask[boundary:-boundary, boundary:-boundary]
+
+    label = label.astype(np.float64) * mask
+    outputs = outputs.astype(np.float64) * mask
+
+    imdiff = label- outputs
+
+    mse = np.mean(imdiff**2)
+    rmse = sqrt(mse)
+    psnr = 20 * log10(255/rmse)
+
+    return psnr
+
 def train_psnr(mse, max_pixel = 1.0):
 
     if(mse == 0):
@@ -96,6 +140,8 @@ def train_psnr(mse, max_pixel = 1.0):
         return 0
 
     return psnr
+
+
 
 def progress_bar(batch, n_steps, loss):
     lenght = 30
@@ -127,3 +173,11 @@ def hamming_distance(a, b): # 수정해서 사용할 것. if dst/총 픽셀수 <
     # 같은 자리의 값이 서로 다른 것들의 합
     distance = (a !=b).sum()
     return distance
+
+def cal_sparsity(mask):
+    n, c, h, w = mask.shape
+    all = n * c * h * w
+    sparse = (all - torch.count_nonzero(mask)) / all
+    # sparsity = (sparse1+sparse2).item()/2
+    sparsity = sparse.item()
+    return sparsity

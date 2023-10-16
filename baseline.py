@@ -1,17 +1,18 @@
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
 import math as math
+from skimage.io import imread, imshow
 from matlab import imresize
-
-'''Tconv는 실험하지 않았으므로 r=4 유지'''
+from torchvision.utils import save_image
 
 class Tconv_block(nn.Module):
     def __init__(self, scale, in_c, out_c, ker, r):
         super(Tconv_block, self).__init__()
         self.scale = scale
         self.ker = ker
-        r = 4
+
         self.high_par = nn.ConvTranspose2d(
             in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker//2, stride=scale, output_padding=scale-1)
 
@@ -156,6 +157,16 @@ class Net(nn.Module):
             mask = self.dilate_mask(mask, dilker)
         inv_mask = torch.where(mask==1, 0, 1).float()
 
+        # '''직접 마스크를 적용하는 임시 코드(사용후 반드시 삭제)'''
+        # device = torch.device('cuda')
+        # mask = imread('visualize/test.bmp')[:,:,0] / 255.
+        # mask = np.expand_dims(mask, 0)
+        # mask = np.expand_dims(mask, 0)
+        # mask = torch.tensor(mask).to(device)
+        # mask = mask.float()
+        # mask = torch.where(mask==0, 0, 1)
+        # inv_mask = torch.where(mask == 1, 0, 1).float()
+        ''''''
         return mask, inv_mask
 
     def dilate_mask(self, mask, dilker):

@@ -1,20 +1,114 @@
+import time
+import torch
+import matplotlib
+import matplotlib.pyplot as plt
+import h5py
+import torch.optim as optim
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+import math
+import os
+import cv2
+from matlab import *
+from skimage.io import imread, imshow
+from skimage.color import rgb2ycbcr
+import torch.nn.modules as nm
+
+from torch.utils.data import DataLoader, random_split
+from datasets import TrainDataset
+from tqdm import tqdm
+from torchvision.utils import save_image
+from torchvision.transforms.functional import to_pil_image
+from utils import *
+from baseline import Net
+from skimage import io
+from predict import predict
+import collections
+np.set_printoptions(precision=8, suppress=True)
+
+
+##### 이미지 분류 및 hf ratio 비교
+"""
+def get_hf_ratio(img, scale):   # 고주파 영역/전체 이미지 픽셀 비율
+    mask, inv_mask = get_mask(img, scale)
+    h, w, c = mask.shape
+    ratio = (np.count_nonzero(mask) / (h * w) * 100) / 100
+    return ratio
+
+def get_lf_var(img, scale):
+    mask, inv_mask = get_binary_mask(img, scale)
+    lr = imresize(img, scalar_scale=1 / scale, method='bicubic')
+    lr = np.where(lr*mask!=0, lr, 0)
+    lf = lr[lr.nonzero()]
+    return np.var(lf)
+
+def get_binary_mask(img, scale):
+    lr = imresize(img, scalar_scale=1 / scale, method='bicubic')
+    lr = np.moveaxis(lr, 2, 0)
+    lr = torch.tensor(lr)
+    blur = F.avg_pool2d(lr, kernel_size=3, stride=1, padding=3//scale, count_include_pad=False)
+    mask = torch.where(torch.abs(lr-blur)>=0.04, 1, 0).float()
+    mask = F.max_pool2d(mask.float(), kernel_size=3, stride=1, padding=3//2)
+    mask = np.moveaxis(mask.numpy(), 0, 2)
+    inv_mask = np.where(mask==1, 0, 1)
+#---------------------- main -------------------------
+bads = []
+goods = []
+for name in fnames:
+    img = io.imread(dir+name)
+
+    img = conv_to_ycbcr(img)
+    img = normalize(img)
+    h, w, c = img.shape
+    img[:h - (h%scale), :w - (w%scale), :]
+    #분류
+    if name in ['barbara.png', 'face.png', 'flowers.png', 'foreman.png', 'monarch.png', 'ppt3.png']:
+        bads.append(img)
+    else:
+        goods.append(img)
+
+goods_ratio = 0
+bads_ratio = 0
+for i, img in enumerate(goods):
+    hfr = get_hf_ratio(img, scale)
+    print(f'goods{i} hf ratio: {hfr:.2f}/ lf var: {get_lf_var(img, scale):.2f}')
+    goods_ratio += hfr
+
+print('------------------')
+for i, img in enumerate(bads):
+    hfr = get_hf_ratio(img, scale)
+    print(f'bads{i} hf ratio: {hfr:.2f}/ lf var: {get_lf_var(img, scale):.2f}')
+    bads_ratio += hfr
+
+print(f'avg hf ratio(goods): {goods_ratio / len(goods):.2f}')
+print(f'avg hf ratio(bads): {bads_ratio / len(bads):.2f}')
+
+"""
+
 
 ####### 이미지 visualize #########
-# hr = io.imread('visualize/butterfly.bmp')
-# r4 = io.imread('visualize/r4_butterfly.bmp')
-# r16 = io.imread('visualize/r16_butterfly.bmp')
-# hr = rgb2ycbcr(hr)[:,:,0]
-# r4 = r4[:,:,0].astype('float')
-# r16 = r16[:,:,0].astype('float')
-#
-# boundary = 0
-# # hr = hr[boundary:-boundary, boundary:-boundary]
-# # r4 = r4[boundary:-boundary, boundary:-boundary]
-# # r16 = r16[boundary:-boundary, boundary:-boundary]
-# one = abs(hr-r16)
-# plt.title('hr-r16')
-# plt.imshow(one, cmap='gray')
-# plt.show()
+bird_b = io.imread('visualize/bird_baseline.bmp')
+bird_23 = io.imread('visualize/bird.bmp')
+origin = io.imread('/home/wstation/TestSet/Set5/bird.bmp')
+bird_b = bird_b[:,:,0]
+bird_23 = bird_23[:,:,0]
+origin = rgb2ycbcr(origin)[:,:,0]
+print(origin)
+
+boundary = 0
+# hr = hr[boundary:-boundary, boundary:-boundary]
+# r4 = r4[boundary:-boundary, boundary:-boundary]
+# r16 = r16[boundary:-boundary, boundary:-boundary]
+one = abs(origin - bird_b)
+two = abs(origin - bird_23)
+plt.subplot(121)
+plt.title('origin - baseline')
+plt.imshow(one)
+plt.subplot(122)
+plt.title('origin - loss2.3')
+plt.imshow(two)
+plt.show()
 ############################################
 
 # with h5py.File("dataset/train_mscale.h5") as file:

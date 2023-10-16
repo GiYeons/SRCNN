@@ -3,6 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 import math as math
 from matlab import imresize
+from torchvision.utils import save_image
 
 
 class Tconv_block(nn.Module):
@@ -15,11 +16,11 @@ class Tconv_block(nn.Module):
             in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
             output_padding=scale - 1)
 
-        self.low_par1 = nn.Conv2d(
-            in_channels=in_c, out_channels=in_c // r, kernel_size=1)
-        self.low_par2 = nn.ConvTranspose2d(
-            in_channels=in_c // r, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
-            output_padding=scale - 1)
+        # self.low_par1 = nn.Conv2d(
+        #     in_channels=in_c, out_channels=in_c // r, kernel_size=1)
+        # self.low_par2 = nn.ConvTranspose2d(
+        #     in_channels=in_c // r, out_channels=out_c, kernel_size=ker, padding=ker // 2, stride=scale,
+        #     output_padding=scale - 1)
 
         for m in self.modules():
             if isinstance(m, nn.ConvTranspose2d):
@@ -34,50 +35,49 @@ class Tconv_block(nn.Module):
         self.ones = nn.Parameter(data=torch.ones(size=(in_c, 1, 1, 1)).float(), requires_grad=False)
         # ===========
 
-    def expand_hw(self, x):
-        b, c, h, w = x.shape
-        x = F.conv_transpose2d(x, self.ones[0:c], stride=(self.scale, self.scale), output_padding=self.scale - 1,
-                               groups=c)
-        return x
+    # def expand_hw(self, x):
+    #     b, c, h, w = x.shape
+    #     x = F.conv_transpose2d(x, self.ones[0:c], stride=(self.scale, self.scale), output_padding=self.scale - 1,
+    #                            groups=c)
+    #     return x
 
-    def tconv_to_conv_par(self, par):
-        par = torch.rot90(par, 2, [2, 3])
-        par = par.transpose(0, 1)
-        return par
+    # def tconv_to_conv_par(self, par):
+    #     par = torch.rot90(par, 2, [2, 3])
+    #     par = par.transpose(0, 1)
+    #     return par
 
-    def eval_forward(self, x, mask_idx, inv_mask_idx):
-        high_par = self.tconv_to_conv_par(self.high_par.weight)
-        low_par1 = self.low_par1.weight
-        low_par2 = self.tconv_to_conv_par(self.low_par2.weight)
-
-        x = self.expand_hw(x)
-        b, c, h, w = x.shape
-        cout, cin, ker, ker = high_par.data.shape
-
-        patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
-        patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
-        patches = patches.transpose(0, 1)
-        patches = patches.contiguous().view(cin, -1, ker, ker)
-        patches = patches.transpose(0, 1)
-
-        patches_out = patches.new(b * h * w, cout, 1, 1)
-        patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
-        patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
-        patches = patches_out
-
-        patches = patches.view(b, h * w, cout)
-        patches = patches.transpose(2, 1)
-        y = F.fold(patches, (h, w), (1, 1))
-
-        return y
+    # def eval_forward(self, x, mask_idx, inv_mask_idx):
+    #     high_par = self.tconv_to_conv_par(self.high_par.weight)
+    #     low_par1 = self.low_par1.weight
+    #     low_par2 = self.tconv_to_conv_par(self.low_par2.weight)
+    #
+    #     x = self.expand_hw(x)
+    #     b, c, h, w = x.shape
+    #     cout, cin, ker, ker = high_par.data.shape
+    #
+    #     patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
+    #     patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
+    #     patches = patches.transpose(0, 1)
+    #     patches = patches.contiguous().view(cin, -1, ker, ker)
+    #     patches = patches.transpose(0, 1)
+    #
+    #     patches_out = patches.new(b * h * w, cout, 1, 1)
+    #     patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
+    #     patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
+    #     patches = patches_out
+    #
+    #     patches = patches.view(b, h * w, cout)
+    #     patches = patches.transpose(2, 1)
+    #     y = F.fold(patches, (h, w), (1, 1))
+    #
+    #     return y
 
     def forward(self, x, mask, inv_mask, eval=False):
         if eval == True:
             return self.eval_forward(x, mask, inv_mask)
 
         high = self.high_par(x) * mask
-        low = self.low_par1(x)
-        low = self.low_par2(low) * inv_mask
+        low = self.high_par(x) * inv_mask
 
         return high + low
 
@@ -91,16 +91,16 @@ class Conv_block(nn.Module):
         # self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
         # self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
         # Bypass
-        self.low_par = None # first_part
-        self.low_par1 = None  # reduction & expansion
-        self.low_par2 = None    # reduction & expansion
-        if in_c == out_c: #mid_part
-            pass
-        elif in_c > 1 and out_c > 1: # reduction & expansion
-            self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=1, kernel_size=ker, padding=ker // 2)
-            self.low_par2 = nn.Conv2d(in_channels=1, out_channels=out_c, kernel_size=1)
-        else:   # first_part
-            self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
+        # self.low_par = None # first_part
+        # self.low_par1 = None  # reduction & expansion
+        # self.low_par2 = None    # reduction & expansion
+        # if in_c == out_c: #mid_part
+        #     pass
+        # elif in_c > 1 and out_c > 1: # reduction & expansion
+        #     self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=1, kernel_size=ker, padding=ker // 2)
+        #     self.low_par2 = nn.Conv2d(in_channels=1, out_channels=out_c, kernel_size=1)
+        # else:   # first_part
+        #     self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -108,46 +108,45 @@ class Conv_block(nn.Module):
                                 std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
                 nn.init.zeros_(m.bias.data)
 
-    def eval_forward(self, x, mask_idx, inv_mask_idx):
-        b, c, h, w = x.shape
-        high_par = self.high_par.weight
-        low_par1 = self.low_par1.weight
-        low_par2 = self.low_par2.weight
-        cout, cin, ker, ker = high_par.data.shape
-
-        patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
-        patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
-        patches = patches.transpose(0, 1)
-        patches = patches.contiguous().view(cin, -1, ker, ker)
-        patches = patches.transpose(0, 1)
-
-        patches_out = patches.new(b * h * w, cout, 1, 1)
-        patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
-        patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
-        patches = patches_out
-
-        patches = patches.view(b, h * w, cout)
-        patches = patches.transpose(2, 1)
-        y = F.fold(patches, (h, w), (1, 1))
-
-        return y
+    # def eval_forward(self, x, mask_idx, inv_mask_idx):
+    #     b, c, h, w = x.shape
+    #     high_par = self.high_par.weight
+    #     low_par1 = self.low_par1.weight
+    #     low_par2 = self.low_par2.weight
+    #     cout, cin, ker, ker = high_par.data.shape
+    #
+    #     patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
+    #     patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
+    #     patches = patches.transpose(0, 1)
+    #     patches = patches.contiguous().view(cin, -1, ker, ker)
+    #     patches = patches.transpose(0, 1)
+    #
+    #     patches_out = patches.new(b * h * w, cout, 1, 1)
+    #     patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
+    #     patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
+    #     patches = patches_out
+    #
+    #     patches = patches.view(b, h * w, cout)
+    #     patches = patches.transpose(2, 1)
+    #     y = F.fold(patches, (h, w), (1, 1))
+    #
+    #     return y
 
     def forward(self, x, mask, inv_mask, eval=False):
         if eval == True:
             return self.eval_forward(x, mask_idx=mask, inv_mask_idx=inv_mask)
 
         high = self.high_par(x) * mask
-        # low = self.low_par1(x) * inv_mask
-        # low = self.low_par2(low)
+        low = self.high_par(x) * inv_mask
         # Bypass
-        if self.low_par != None:    # first_part
-            low = self.low_par(x * inv_mask)
-        elif (self.low_par1 != None) and (self.low_par2 != None):     # reduction & expansion
-            low = self.low_par1(x) * inv_mask
-            low = self.low_par2(low)
-        else:   # mid_part
-            low = x * 1.2 * inv_mask
-            #train: 1.2
+        # if self.low_par != None:    # first_part
+        #     low = self.low_par(x * inv_mask)
+        # elif (self.low_par1 != None) and (self.low_par2 != None):     # reduction & expansion
+        #     low = self.low_par1(x) * inv_mask
+        #     low = self.low_par2(low)
+        # else:   # mid_part
+        #     low = x * 1.2 * inv_mask
+        #     #train: 1.2
 
         return low + high
 
@@ -178,7 +177,7 @@ class Net(nn.Module):
             mask = self.dilate_mask(mask, dilker)
         inv_mask = torch.where(mask == 1, 0, 1).float()
 
-        return mask, inv_mask
+        return mask * 0.9, inv_mask
 
     def dilate_mask(self, mask, dilker):
         mask = F.max_pool2d(mask.float(), kernel_size=dilker, stride=1, padding=dilker // 2)

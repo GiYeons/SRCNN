@@ -45,31 +45,31 @@ class Tconv_block(nn.Module):
         par = par.transpose(0, 1)
         return par
 
-    def eval_forward(self, x, mask_idx, inv_mask_idx):
-        high_par = self.tconv_to_conv_par(self.high_par.weight)
-        low_par1 = self.low_par1.weight
-        low_par2 = self.tconv_to_conv_par(self.low_par2.weight)
-
-        x = self.expand_hw(x)
-        b, c, h, w = x.shape
-        cout, cin, ker, ker = high_par.data.shape
-
-        patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
-        patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
-        patches = patches.transpose(0, 1)
-        patches = patches.contiguous().view(cin, -1, ker, ker)
-        patches = patches.transpose(0, 1)
-
-        patches_out = patches.new(b * h * w, cout, 1, 1)
-        patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
-        patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
-        patches = patches_out
-
-        patches = patches.view(b, h * w, cout)
-        patches = patches.transpose(2, 1)
-        y = F.fold(patches, (h, w), (1, 1))
-
-        return y
+    # def eval_forward(self, x, mask_idx, inv_mask_idx):
+    #     high_par = self.tconv_to_conv_par(self.high_par.weight)
+    #     low_par1 = self.low_par1.weight
+    #     low_par2 = self.tconv_to_conv_par(self.low_par2.weight)
+    #
+    #     x = self.expand_hw(x)
+    #     b, c, h, w = x.shape
+    #     cout, cin, ker, ker = high_par.data.shape
+    #
+    #     patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
+    #     patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
+    #     patches = patches.transpose(0, 1)
+    #     patches = patches.contiguous().view(cin, -1, ker, ker)
+    #     patches = patches.transpose(0, 1)
+    #
+    #     patches_out = patches.new(b * h * w, cout, 1, 1)
+    #     patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
+    #     patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
+    #     patches = patches_out
+    #
+    #     patches = patches.view(b, h * w, cout)
+    #     patches = patches.transpose(2, 1)
+    #     y = F.fold(patches, (h, w), (1, 1))
+    #
+    #     return y
 
     def forward(self, x, mask, inv_mask, eval=False):
         if eval == True:
@@ -88,11 +88,11 @@ class Conv_block(nn.Module):
 
         self.high_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2)
 
-        # self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
-        # self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
-        self.low_par = None
-        if in_c!=out_c:
-            self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
+        self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
+        self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
+        # self.low_par = None
+        # if in_c!=out_c:
+        #     self.low_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -100,41 +100,41 @@ class Conv_block(nn.Module):
                                 std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
                 nn.init.zeros_(m.bias.data)
 
-    def eval_forward(self, x, mask_idx, inv_mask_idx):
-        b, c, h, w = x.shape
-        high_par = self.high_par.weight
-        low_par1 = self.low_par1.weight
-        low_par2 = self.low_par2.weight
-        cout, cin, ker, ker = high_par.data.shape
-
-        patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
-        patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
-        patches = patches.transpose(0, 1)
-        patches = patches.contiguous().view(cin, -1, ker, ker)
-        patches = patches.transpose(0, 1)
-
-        patches_out = patches.new(b * h * w, cout, 1, 1)
-        patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
-        patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
-        patches = patches_out
-
-        patches = patches.view(b, h * w, cout)
-        patches = patches.transpose(2, 1)
-        y = F.fold(patches, (h, w), (1, 1))
-
-        return y
+    # def eval_forward(self, x, mask_idx, inv_mask_idx):
+    #     b, c, h, w = x.shape
+    #     high_par = self.high_par.weight
+    #     low_par1 = self.low_par1.weight
+    #     low_par2 = self.low_par2.weight
+    #     cout, cin, ker, ker = high_par.data.shape
+    #
+    #     patches = F.pad(x, pad=(ker // 2, ker // 2, ker // 2, ker // 2))
+    #     patches = patches.unfold(2, ker, 1).unfold(3, ker, 1)
+    #     patches = patches.transpose(0, 1)
+    #     patches = patches.contiguous().view(cin, -1, ker, ker)
+    #     patches = patches.transpose(0, 1)
+    #
+    #     patches_out = patches.new(b * h * w, cout, 1, 1)
+    #     patches_out[mask_idx] = F.conv2d(patches[mask_idx], high_par)
+    #     patches_out[inv_mask_idx] = F.conv2d(F.conv2d(patches[inv_mask_idx], low_par1), low_par2)
+    #     patches = patches_out
+    #
+    #     patches = patches.view(b, h * w, cout)
+    #     patches = patches.transpose(2, 1)
+    #     y = F.fold(patches, (h, w), (1, 1))
+    #
+    #     return y
 
     def forward(self, x, mask, inv_mask, eval=False):
         if eval == True:
             return self.eval_forward(x, mask_idx=mask, inv_mask_idx=inv_mask)
 
         high = self.high_par(x) * mask
-        # low = self.low_par1(x) * inv_mask
-        # low = self.low_par2(low)
-        if self.low_par != None:
-            low = self.low_par(x * inv_mask)
-        else:
-            low = x * 1.2 * inv_mask
+        low = self.low_par1(x) * inv_mask
+        low = self.low_par2(low)
+        # if self.low_par != None:
+        #     low = self.low_par(x * inv_mask)
+        # else:
+        #     low = x * 1.2 * inv_mask
 
         return low + high
 

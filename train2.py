@@ -1,27 +1,15 @@
 import time
 
-import matplotlib.pyplot as plt
-import h5py
-import torch
 import torch.optim as optim
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-from model2 import Net
-import random
-import numpy as np
-import math
+from codes.model4 import Net
 import os
-import cv2
 from matlab import *
-from skimage.io import imread
 from skimage.color import rgb2ycbcr
-import gc
 
 from datasets import Generator
-from torchvision.utils import save_image
-from torchvision.transforms.functional import to_pil_image
 from utils import *
 
 
@@ -35,7 +23,7 @@ if __name__=="__main__":
     num_worker = 10
 
     r = 4
-    th = 0.04
+    th = 0.054
     dilker = 3
     dilation = False
     eval = False
@@ -57,6 +45,8 @@ if __name__=="__main__":
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=(epochs*iterations), eta_min=1e-10)
 
     best_psnr = 0
+    best_epoch = 0
+
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1} of {epochs}")
         #############train##############
@@ -71,7 +61,7 @@ if __name__=="__main__":
 
             # prop
             optimizer.zero_grad()
-            outs = model(lr, eval=eval)
+            outs = model(lr, th=th, eval=eval)
             outputs = outs
             loss = criterion(outputs, hr)
 
@@ -131,12 +121,13 @@ if __name__=="__main__":
             if best_psnr < all_scales_avg_psnr:
                 best_weight = model.state_dict()
                 best_psnr = all_scales_avg_psnr
+                best_epoch = epoch
+                torch.save(best_weight, 'outputs/model.pth')
 
         print('- lr: {:.7f}'.format(float(learnig_rate)), end=' ')
         end = time.time()
         print(f"{((end - start) / 60):.3f} minutes 소요됨")
 
     print(f"Max val PSNR: {best_psnr}")
-    print('Saving model...')
-    torch.save(best_weight, 'outputs/model2.pth')
+    print(f'Saving epoch {best_epoch} model...')
 

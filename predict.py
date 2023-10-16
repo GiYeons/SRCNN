@@ -7,14 +7,14 @@ from skimage.io import imread, imsave
 from skimage.color import rgb2ycbcr
 import numpy as np
 import torch
-from utils import PSNR, rgb2y_uint8, SSIM
+from utils import PSNR, rgb2y_uint8, SSIM, PSNR_specific
 from torchvision.utils import save_image
 from torchsummary import summary as summary
 
 # import the network we want to predict for
-from baseline import Net
+from ASFSR_final import Net
 
-testWord = 'fore'   # line22, 134
+testWord = 'bird'   # line22, 134
 
 def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
     images = sorted(os.listdir(val_path))
@@ -41,9 +41,9 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
             lr = np.expand_dims(lr, axis=0)  # 텐서 계산을 위해 차원 확장
             lr = torch.from_numpy(lr).float().to(device)
 
-            out = model(lr)
+            out = model(lr, th=th)
             output = out.cuda().data.cpu()
-            save_image(output, f"outputs/{image.replace('.bmp', '')}.bmp")
+            # save_image(output, f"outputs/{image.replace('.bmp', '')}.bmp")
             output = output.numpy()
 
             hr = d2int(hr)
@@ -53,15 +53,18 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
             output = np.moveaxis(output, 0, -1)
 
             avg_ssim +=SSIM(output, hr, boundary)
-            avg_psnr += PSNR(hr, output, boundary=boundary)
-            print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=boundary))
-            psnrs.append(PSNR(hr, output, boundary=boundary))
+            # avg_psnr += PSNR(hr, output, boundary=boundary)
+            # print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=boundary))
+            # psnrs.append(PSNR(hr, output, boundary=boundary))
+            avg_psnr += PSNR_specific(hr, output, image, boundary=boundary)
+            print(SSIM(output, hr, scale), "/", PSNR_specific(hr, output, image, boundary=boundary))
+            psnrs.append(PSNR_specific(hr, output, image, boundary=boundary))
 
     # print(round(avg_ssim/len(images), 4), end=' ')
     return avg_psnr/len(images), avg_ssim/len(images)
 
 
-def predict(datasets, model_paths, r=4):
+def predict(datasets, model_paths, r=[4], th=[0.04]):
 
 
     sets = datasets #['set5/'] #, 'Set14/', 'BSDS100/', 'Urban100/', 'DIV2K_val/'''
@@ -82,7 +85,7 @@ def predict(datasets, model_paths, r=4):
 
     # ths = [0.01, 0.04, 0.07, 0.10]
     # ths = [0]
-    ths = [0.04]
+    th = th
     dilation= True
     dilker = 3
 
@@ -113,7 +116,6 @@ def predict(datasets, model_paths, r=4):
             ckpnt = torch.load(path)
             model.load_state_dict(ckpnt)
             val_path = '/home/wstation/TestSet/' + set
-            th = ths[idx]
 
             result1, result2 = val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs)
             print('avg PSNR:', round(result1, 5), end='/')
@@ -126,9 +128,12 @@ if __name__=="__main__":
     device = torch.device('cuda')
 
     set = 'Set5/'
-    # psnrs4 = predict([set], ['baseline'], r=4)
-    psnrs16 = predict([set], ['r=16,Tconv r=4'], r=16)
+    psnrs4 = predict([set], ['final'], r=4, th=0.04)
+    # psnrs16 = predict([set], ['2path2'], r=8, th=0.04)
+    # psnr_3path = predict([set], ['3path3'], r=[4, 8], th=[0.04, 0.02])
+    # psnr_4path = predict([set], ['4path6'], r=[2, 8, 16], th=[0.06, 0.04, 0.02])
+    # psnr_5path = predict([set], ['5path2'], r=[2, 4, 8, 16], th=[0.075, 0.04, 0.02, 0.01])
 
-    images = sorted(os.listdir('/home/wstation/TestSet/'+set))
+    # images = sorted(os.listdir('/home/wstation/TestSet/'+set))
     # images = [s for s in images if testWord in s]
 

@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
-from model import Net
+from ASFSR_final import Net
 import random
 import numpy as np
 import math
@@ -23,7 +23,11 @@ from datasets import Generator
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from utils import *
+torch.set_printoptions(sci_mode=False)
 from torchsummary import summary as summary
+from torch.utils.tensorboard import SummaryWriter
+
+writer = SummaryWriter()
 
 
 if __name__=="__main__":
@@ -38,7 +42,7 @@ if __name__=="__main__":
     r = 4
     th = 0.04
     dilker = 3
-    dilation = False
+    dilation = True
     eval = False
 
     train_path = 'dataset/LR_HR/scale_x2/dataset_cpy1.h5'
@@ -59,6 +63,7 @@ if __name__=="__main__":
     scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=(epochs*iterations), eta_min=1e-10)
 
     best_psnr = 0
+    best_epoch = 0
 
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1} of {epochs}")
@@ -75,9 +80,11 @@ if __name__=="__main__":
 
             # prop
             optimizer.zero_grad()
-            outs = model(lr, eval=eval)
+            outs = model(lr, th=th, eval=eval)
             outputs = outs
-            loss = criterion(outputs, hr)
+            # loss = criterion(outputs, hr)
+            loss = sparseLoss(outputs, hr, th=th, weight1=1.3, weight2=0.8)
+            # writer.add_scalar("Loss/train", loss, epoch)
 
             #backprop
             loss_limit = 10
@@ -126,7 +133,7 @@ if __name__=="__main__":
                     output = output[0]
                     output = np.moveaxis(output, 0, -1)
 
-                    avg_psnr += PSNR(hr, output, boundary=scale)
+                    avg_psnr += PSNR(hr, output, boundary=scale+2)      #수정전: scale
                 avg_psnr = avg_psnr / len(images)
                 all_scales_avg_psnr += avg_psnr
                 print(' - x' + str(scale) + '_val_psnr: {:.5f}'.format(avg_psnr), end=' ')
@@ -135,12 +142,15 @@ if __name__=="__main__":
             if best_psnr < all_scales_avg_psnr:
                 best_weight = model.state_dict()
                 best_psnr = all_scales_avg_psnr
+                best_epoch = epoch
+                torch.save(best_weight, 'outputs/train.pth')
 
         print('- lr: {:.7f}'.format(float(learnig_rate)), end=' ')
         end = time.time()
         print(f"{((end - start) / 60):.3f} minutes 소요됨")
 
     print(f"Max val PSNR: {best_psnr}")
-    print('Saving model...')
-    torch.save(best_weight, 'outputs/model.pth')
+    print(f'Saving epoch {best_epoch} model...')
+    # writer.flush()
+    # writer.close()
 
