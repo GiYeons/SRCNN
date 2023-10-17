@@ -10,6 +10,7 @@ import torch
 from utils import PSNR, rgb2y_uint8, SSIM, PSNR_specific
 from torchvision.utils import save_image
 from torchsummary import summary as summary
+from collections import OrderedDict
 
 # import the network we want to predict for
 from ASFSR_final import Net
@@ -97,11 +98,27 @@ def predict(datasets, model_paths, r=[4], th=[0.04]):
         for idx, path in enumerate(paths):
             path = dir_n + path + '.pth'
             ckpnt = torch.load(path)
-            model.load_state_dict(ckpnt)
+            model.load_state_dict(ckpnt, strict=False)
             val_path = '/home/wstation/TestSet/' + set
 
-            # weights quantization
+            #--------------------quantization-------------------------
+            ## bias initialization
+            ## bias를 반영하기 전에 bit_shift를 연산하기 위해 forward에서 manually하게 bias연산을 작성해야 함
+            ## 따라서 bias를 수동으로 초기화한다
+            ## chpnt 에서 **_part.**_par.bias 이름으로 된 것만 뽑아옴
+            biases = OrderedDict()
+            for key, value in ckpnt.items():
+                if(key[-4:] == "bias"):
+                    biases[key] = value
+
+            model.init_bias(biases)
+
+            ## weights quantization
             model.quantize(scheme="uniform")
+            # for name, param in model.named_parameters():
+            #     print("파라미터 이름:", name, "파라미터", param)
+
+
 
             result1, result2 = val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs)
             print('avg PSNR:', round(result1, 5), end='/')

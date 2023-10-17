@@ -65,23 +65,26 @@ class Conv_block(nn.Module):
     def __init__(self, in_c, out_c, ker, r):
         super(Conv_block, self).__init__()
 
-        self.high_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2)
+        self.high_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2, bias=False)
 
-        self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2)
-        self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1)
+        self.low_par1 = nn.Conv2d(in_channels=in_c, out_channels=out_c // r, kernel_size=ker, padding=ker // 2, bias=False)
+        self.low_par2 = nn.Conv2d(in_channels=out_c // r, out_channels=out_c, kernel_size=1, bias=False)
+
+        # custom bias
+        self.high_bias = None
+        self.low1_bias = None
+        self.low2_bias = None
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.normal_(m.weight.data, mean=0.0,
                                 std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
-                nn.init.zeros_(m.bias.data)
+                # nn.init.zeros_(m.bias.data)
 
-    def forward(self, x, mask, inv_mask, eval=False):
-        high_bias = self.high_par.bias.data
-
-        high = self.high_par(x) * mask
-        low = self.low_par1(x) * inv_mask
-        low = self.low_par2(low)
+    def forward(self, x, mask, inv_mask, bit_shift):
+        high = (self.high_par(x) / 2**bit_shift + self.high_bias) * mask
+        low = (self.low_par1(x) / 2**bit_shift + self.low1_bias) * inv_mask
+        low = self.low_par2(low) / 2**bit_shift + self.low2_bias
 
         return (low + high)
 
@@ -107,6 +110,11 @@ class Net(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
         ##################################
+        # layers for loof
+        self.all_layers = nn.Sequential(
+            self.first_part, self.reduction, self.mid_part1, self.mid_part2, self.mid_part3, self.mid_part4, self.expansion, self.last_part
+        )
+        # variables
         self.wts_nbit, self.wts_fbit = 8, 4
         self.biases_nbit, self.biases_ibit = 8, 4
         self.biases_fbit = self.biases_nbit - self.biases_ibit
@@ -114,6 +122,7 @@ class Net(nn.Module):
         self.act_nbit, self.act_fbit = 8, 4
         self.origin_wts = []
         self.quantized_wts = []
+
 
 
     def create_mask(self, x, th, dilker, dilation=True):
@@ -145,6 +154,26 @@ class Net(nn.Module):
         inv_mask = torch.where(mask==1, 0, 1)
         return mask, inv_mask
 
+    # 각 레이어의 bias 초기화 (last_part 나중에 할것)
+    def init_bias(self, biases):
+        bias_list = []
+        for key, value in biases.items():
+            bias_list.append(value)
+
+        # 매개변수로 받은 bias들을 model 내 변수로 옮기기
+        for i in range(len(self.all_layers) - 1):
+            self.all_layers[i].high_bias = bias_list[i * 3]
+            self.all_layers[i].low1_bias = bias_list[i * 3 + 1]
+            self.all_layers[i].low2_bias = bias_list[i * 3 + 2]
+
+            high_bias_size= self.all_layers[i].high_bias.size(dim=0)
+            low1_bias_size = self.all_layers[i].low1_bias.size(dim=0)
+            low2_bias_size = self.all_layers[i].low2_bias.size(dim=0)
+
+            self.all_layers[i].high_bias = self.all_layers[i].high_bias.view(1, high_bias_size, 1, 1)
+            self.all_layers[i].low1_bias = self.all_layers[i].low1_bias.view(1, low1_bias_size, 1, 1)
+            self.all_layers[i].low2_bias = self.all_layers[i].low2_bias.view(1, low2_bias_size, 1, 1)
+
     #-----------------------quantization------------------------------
     # Functions for assigning quantized weights to the model's weights
     def quantize(self, scheme="uniform", wts_nbit=8, wts_fbit=4):
@@ -169,10 +198,6 @@ class Net(nn.Module):
         self.wts_nbit = wts_nbit
         self.wts_fbit = wts_fbit
 
-        # layers for loof
-        self.all_layers = nn.Sequential(
-            self.first_part, self.reduction, self.mid_part1, self.mid_part2, self.mid_part3, self.mid_part4, self.expansion, self.last_part
-        )
         #TConv에서 high, low weight를 없앴으므로 따로 처리해야 함 (작성예정)
         for i in range(len(self.all_layers) - 1):
             high_wts = self.all_layers[i].high_par.weight.data
@@ -199,12 +224,13 @@ class Net(nn.Module):
             self.origin_wts.append([high_wts, low_wts1, low_wts2])
             self.quantized_wts.append([high_weight, low_weight1, low_weight2])
 
-            high_bias = self.all_layers[i].high_par.bias.data
-            low_bias1 = self.all_layers[i].low_par1.bias.data
-            low_bias2 = self.all_layers[i].low_par2.bias.data
+            high_bias = self.all_layers[i].high_bias
+            low_bias1 = self.all_layers[i].low1_bias
+            low_bias2 = self.all_layers[i].low2_bias
 
             self.bit_shift, self.output_fbit = self.calculate_bit_shift(8, 4)
             print(self.bit_shift, self.output_fbit)
+
 
 
         # print(self.all_layers[0].high_par.weight.data)
@@ -255,7 +281,7 @@ class Net(nn.Module):
 
     def relu_quantize(self, x, step, nbit, bias_shift):
         pos_end = torch.tensor(2 ** nbit - 1).to(x.device)
-        print("relu 전:", x)
+        # print("relu 전:", x)
 
         activations = x;
         activations = torch.where(activations >= 0, activations / round(2 ** bias_shift * (step)), torch.zeros_like(activations))
@@ -270,16 +296,16 @@ class Net(nn.Module):
 
         orix = x
 
-        x = self.relu_quantize(self.first_part(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.first_part(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
         # insert activation quantization function?
-        x = self.relu_quantize(self.reduction(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.reduction(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
 
-        x = self.relu_quantize(self.mid_part1(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        x = self.relu_quantize(self.mid_part2(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        x = self.relu_quantize(self.mid_part3(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        x = self.relu_quantize(self.mid_part4(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part1(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part2(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part3(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part4(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
 
-        x = self.relu_quantize(self.expansion(x, mask, inv_mask, eval=False), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.expansion(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
         # x = self.relu(self.first_part(x, mask, inv_mask, eval=False))
         # # insert activation quantization function?
         # x = self.relu(self.reduction(x, mask, inv_mask, eval=False))
