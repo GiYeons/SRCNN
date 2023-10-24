@@ -16,7 +16,7 @@ class Tconv_block(nn.Module):
         self.ker = 3
         self.out_c = int(out_c * (scale ** 2))
 
-        self.sub_pixel = nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=self.out_c, kernel_size=self.ker, padding=self.ker // 2),
+        self.sub_pixel = nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=self.out_c, kernel_size=self.ker, padding=self.ker // 2, bias=False),
                                 nn.PixelShuffle(scale))
 
         # custom bias
@@ -41,13 +41,13 @@ class Tconv_block(nn.Module):
                 nn.init.zeros_(m.bias.data)
             if isinstance(m, nn.Conv2d):
                 torch.nn.init.normal_(m.weight.data, mean=0.0, std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
-                nn.init.zeros_(m.bias.data)
+                # nn.init.zeros_(m.bias.data)
 
         # ===========
         self.ones = nn.Parameter(data=torch.ones(size=(in_c, 1, 1, 1)).float(), requires_grad=False)
         # ===========
 
-    def forward(self, x, mask, inv_mask):
+    def forward(self, x, mask, inv_mask, bit_shift):
         # original code
         """
 
@@ -55,7 +55,7 @@ class Tconv_block(nn.Module):
         low = self.low_par1(x)
         low = self.low_par2(low) * inv_mask
         """
-        x = self.sub_pixel[0](x)
+        x = (self.sub_pixel[0](x) / 2**bit_shift) + self.bias
         result = self.sub_pixel[1](x)
 
         return result
@@ -177,6 +177,10 @@ class Net(nn.Module):
             self.all_layers[i].low1_bias = self.all_layers[i].low1_bias.view(1, low1_bias_size, 1, 1)
             self.all_layers[i].low2_bias = self.all_layers[i].low2_bias.view(1, low2_bias_size, 1, 1)
 
+        self.all_layers[-1].bias = bias_list[-1]
+        last_bias_size = self.all_layers[-1].bias.size(dim=0)
+        self.all_layers[-1].bias = self.all_layers[-1].bias.view(1, last_bias_size, 1, 1)
+
     #-----------------------quantization------------------------------
     # Functions for assigning quantized weights to the model's weights
     def quantize(self, scheme="uniform", wts_nbit=8, wts_fbit=4):
@@ -192,6 +196,14 @@ class Net(nn.Module):
             #     self.all_layers[i].low1_bias = self.quantized_biases[i][1]
             #     self.all_layers[i].low2_bias = self.quantized_biases[i][2]
             self.all_layers[i].cuda()
+
+        # last layer
+        self.all_layers[-1].sub_pixel[0].weight.data = self.quantized_wts[-1][0]
+
+        # if(len(self.quantized_biases) > 0):
+        #     self.all_layers[-1].bias = self.quantized_biases[-1][0]
+
+        self.all_layers[-1].cuda()
 
 
     # function to revert the model's weights to the original weights
@@ -247,10 +259,34 @@ class Net(nn.Module):
                 self.quantized_biases.append([high_biases, low_biases1, low_biases2])
 
 
-            self.bit_shift, self.output_fbit = self.calculate_bit_shift(8, 4)
-            print(self.bit_shift, self.output_fbit)
+        # last_part
+        last_wts = self.all_layers[-1].sub_pixel[0].weight.data
+        wts_step = 2 ** -wts_fbit
+
+        print('step: ', wts_step)
+
+        if(scheme == "none"):
+                pass
+
+        elif (scheme == "uniform"):
+            last_weight, _ = self.uniform_quantize(last_wts, wts_step, wts_nbit)
+
+        self.origin_wts.append([last_wts, None, None])
+        self.quantized_wts.append([last_weight, None, None])
+
+        ## biases
+        last_b = self.all_layers[-1].bias
+
+        if (self.biases_nbit > 0):
+            last_biases = self.quantize_and_constrain(last_b, self.biases_nbit, self.biases_ibit)
+
+            self.origin_biases.append([last_b, None, None])
+            self.quantized_biases.append([last_biases, None, None])
 
 
+        # bit shift
+        self.bit_shift, self.output_fbit = self.calculate_bit_shift(8, 4)
+        print(self.bit_shift, self.output_fbit)
 
         # print(self.all_layers[0].high_par.weight.data)
 
@@ -352,7 +388,7 @@ class Net(nn.Module):
         # x = self.relu(self.expansion(x, mask, inv_mask, eval=False))
 
         mask, inv_mask = self.upsample_mask(mask)
-        y = self.last_part(x, mask, inv_mask)
+        y = self.last_part(x, mask, inv_mask, self.bit_shift)
 
 
 
