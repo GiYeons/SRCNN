@@ -16,10 +16,11 @@ class Tconv_block(nn.Module):
         self.ker = 3
         self.out_c = int(out_c * (scale ** 2))
 
-        self.sub_pixel = nn.Sequential(
-            nn.Conv2d(in_channels=in_c, out_channels=self.out_c, kernel_size=self.ker, padding=self.ker // 2),
-            nn.PixelShuffle(scale),
-        )
+        self.sub_pixel = nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=self.out_c, kernel_size=self.ker, padding=self.ker // 2),
+                                nn.PixelShuffle(scale))
+
+        # custom bias
+        self.bias = None
 
         # original code (transposed convolution layer)
         """
@@ -46,17 +47,16 @@ class Tconv_block(nn.Module):
         self.ones = nn.Parameter(data=torch.ones(size=(in_c, 1, 1, 1)).float(), requires_grad=False)
         # ===========
 
-    def forward(self, x, mask, inv_mask, eval=False):
+    def forward(self, x, mask, inv_mask):
         # original code
         """
-        if eval==True:
-            return self.eval_forward(x, mask, inv_mask)
 
         high = self.high_par(x) * mask
         low = self.low_par1(x)
         low = self.low_par2(low) * inv_mask
         """
-        result = self.sub_pixel(x)
+        x = self.sub_pixel[0](x)
+        result = self.sub_pixel[1](x)
 
         return result
 
@@ -120,8 +120,11 @@ class Net(nn.Module):
         self.biases_fbit = self.biases_nbit - self.biases_ibit
         self.bit_shift, self.output_fbit = 0, 0
         self.act_nbit, self.act_fbit = 8, 4
+        self.scales_nbit, self.scales_ibit = 1, 1
         self.origin_wts = []
         self.quantized_wts = []
+        self.origin_biases = []
+        self.quantized_biases = []
 
 
 
@@ -183,7 +186,13 @@ class Net(nn.Module):
             self.all_layers[i].high_par.weight.data = self.quantized_wts[i][0]
             self.all_layers[i].low_par1.weight.data = self.quantized_wts[i][1]
             self.all_layers[i].low_par2.weight.data = self.quantized_wts[i][2]
+
+            # if(len(self.quantized_biases) > 0):
+            #     self.all_layers[i].high_bias = self.quantized_biases[i][0]
+            #     self.all_layers[i].low1_bias = self.quantized_biases[i][1]
+            #     self.all_layers[i].low2_bias = self.quantized_biases[i][2]
             self.all_layers[i].cuda()
+
 
     # function to revert the model's weights to the original weights
     def revert(self):
@@ -224,9 +233,19 @@ class Net(nn.Module):
             self.origin_wts.append([high_wts, low_wts1, low_wts2])
             self.quantized_wts.append([high_weight, low_weight1, low_weight2])
 
-            high_bias = self.all_layers[i].high_bias
-            low_bias1 = self.all_layers[i].low1_bias
-            low_bias2 = self.all_layers[i].low2_bias
+            # biases
+            high_b = self.all_layers[i].high_bias
+            low_b1 = self.all_layers[i].low1_bias
+            low_b2 = self.all_layers[i].low2_bias
+
+            if(self.biases_nbit > 0):
+                high_biases = self.quantize_and_constrain(high_b, self.biases_nbit, self.biases_ibit)
+                low_biases1 = self.quantize_and_constrain(low_b1, self.biases_nbit, self.biases_ibit)
+                low_biases2 = self.quantize_and_constrain(low_b2, self.biases_nbit, self.biases_ibit)
+
+                self.origin_biases.append([high_b, low_b1, low_b2])
+                self.quantized_biases.append([high_biases, low_biases1, low_biases2])
+
 
             self.bit_shift, self.output_fbit = self.calculate_bit_shift(8, 4)
             print(self.bit_shift, self.output_fbit)
@@ -235,11 +254,11 @@ class Net(nn.Module):
 
         # print(self.all_layers[0].high_par.weight.data)
 
-    def uniform_quantize(self, wts, step, nbit):
+    def uniform_quantize(self, x, step, nbit):
         pos_end = 2 ** nbit - 1     # 255
         neg_end = -pos_end          # -255
 
-        output = 2 * torch.round(wts / step + 0.5) - 1
+        output = 2 * torch.round(x / step + 0.5) - 1
         output = torch.clip(output, min=neg_end, max=pos_end)
 
         output_store = (output - 1) / 2
@@ -254,20 +273,35 @@ class Net(nn.Module):
 
         # should be modified
 
+    # bias & scale quantization
+    def quantize_and_constrain(self, x, nbit, ibit, sign=True):
+        qfactor = 2 ** (nbit-ibit)
+        nfactor = 2 ** nbit
+
+        if(sign):
+            max = nfactor / 2 - 1
+            min = max - nfactor + 1
+        else:
+            max = nfactor - 1
+            min = 0
+
+        output = torch.round(x * qfactor)
+        output = torch.clip(output, min=min, max=max)
+
+        return output
+
+
     def calculate_bit_shift(self, input_ibit, input_fbit):
         scheme = "uniform"  # test
         activation = "float_relu"
-
-        scales_nbit, scales_ibit = 8, 4
-        biases_nbit, biases_ibit = 8, 4
 
         if(scheme == "none"):
             wts_fbit = 0
         elif(scheme == "uniform"):
             wts_fbit = self.wts_fbit + 1
 
-        scales_fbit = scales_nbit - scales_ibit
-        biases_fbit = biases_nbit - biases_ibit
+        scales_fbit = self.scales_nbit - self.scales_ibit
+        biases_fbit = self.biases_nbit - self.biases_ibit
 
         bit_shift = input_fbit + wts_fbit + scales_fbit - biases_fbit
 
@@ -318,7 +352,7 @@ class Net(nn.Module):
         # x = self.relu(self.expansion(x, mask, inv_mask, eval=False))
 
         mask, inv_mask = self.upsample_mask(mask)
-        y = self.last_part(x, mask, inv_mask, eval=False)
+        y = self.last_part(x, mask, inv_mask)
 
 
 

@@ -44,7 +44,7 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
 
             out = model(lr, th=th)
             output = out.cuda().data.cpu()
-            # save_image(output, f"outputs/{image.replace('.bmp', '')}.bmp")
+            save_image(output, f"outputs/{image.replace('.bmp', '')}.png")
             output = output.numpy()
 
             hr = d2int(hr)
@@ -114,7 +114,7 @@ def predict(datasets, model_paths, r=[4], th=[0.04]):
             model.init_bias(biases)
 
             ## weights quantization
-            model.quantize(scheme="uniform")
+            model.quantize(scheme="uniform", wts_nbit=8, wts_fbit=4)
             # for name, param in model.named_parameters():
             #     print("파라미터 이름:", name, "파라미터", param)
 
