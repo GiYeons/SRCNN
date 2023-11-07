@@ -115,12 +115,15 @@ class Net(nn.Module):
             self.first_part, self.reduction, self.mid_part1, self.mid_part2, self.mid_part3, self.mid_part4, self.expansion, self.last_part
         )
         # variables
+        ### for preset
         self.wts_nbit, self.wts_fbit = 8, 4
         self.biases_nbit, self.biases_ibit = 8, 4
-        self.biases_fbit = self.biases_nbit - self.biases_ibit
-        self.bit_shift, self.output_fbit = 0, 0
         self.act_nbit, self.act_fbit = 8, 4
         self.scales_nbit, self.scales_ibit = 1, 1
+
+        ### for storage
+        self.biases_fbit = self.biases_nbit - self.biases_ibit
+        self.bit_shift, self.output_fbit = 0, 0
         self.origin_wts = []
         self.quantized_wts = []
         self.origin_biases = []
@@ -191,17 +194,17 @@ class Net(nn.Module):
             self.all_layers[i].low_par1.weight.data = self.quantized_wts[i][1]
             self.all_layers[i].low_par2.weight.data = self.quantized_wts[i][2]
 
-            # if(len(self.quantized_biases) > 0):
-            #     self.all_layers[i].high_bias = self.quantized_biases[i][0]
-            #     self.all_layers[i].low1_bias = self.quantized_biases[i][1]
-            #     self.all_layers[i].low2_bias = self.quantized_biases[i][2]
+            if(len(self.quantized_biases) > 0):
+                self.all_layers[i].high_bias = self.quantized_biases[i][0]
+                self.all_layers[i].low1_bias = self.quantized_biases[i][1]
+                self.all_layers[i].low2_bias = self.quantized_biases[i][2]
             self.all_layers[i].cuda()
 
         # last layer
         self.all_layers[-1].sub_pixel[0].weight.data = self.quantized_wts[-1][0]
 
-        # if(len(self.quantized_biases) > 0):
-        #     self.all_layers[-1].bias = self.quantized_biases[-1][0]
+        if(len(self.quantized_biases) > 0):
+            self.all_layers[-1].bias = self.quantized_biases[-1][0]
 
         self.all_layers[-1].cuda()
 
@@ -228,9 +231,10 @@ class Net(nn.Module):
             # test (should be modified)
             wts_step = 2 ** -wts_fbit
 
-            print('step: ', wts_step)
             if(scheme == "none"):
-                pass
+                high_weight = high_wts
+                low_weight1 = low_wts1
+                low_weight2 = low_wts2
 
             elif(scheme == "uniform"):
                 high_weight, _ = self.uniform_quantize(high_wts, wts_step, wts_nbit)
@@ -266,7 +270,7 @@ class Net(nn.Module):
         print('step: ', wts_step)
 
         if(scheme == "none"):
-                pass
+            last_weight = last_wts
 
         elif (scheme == "uniform"):
             last_weight, _ = self.uniform_quantize(last_wts, wts_step, wts_nbit)
@@ -351,7 +355,6 @@ class Net(nn.Module):
 
     def relu_quantize(self, x, step, nbit, bias_shift):
         pos_end = torch.tensor(2 ** nbit - 1).to(x.device)
-        # print("relu 전:", x)
 
         activations = x;
         activations = torch.where(activations >= 0, activations / round(2 ** bias_shift * (step)), torch.zeros_like(activations))

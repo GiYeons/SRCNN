@@ -32,7 +32,10 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
             except:
                 img = np.expand_dims(img, axis=-1)
 
-            img = np.float64(img) / 255.
+            ####### image quantization ############
+            img = np.clip(img, 0, 255)
+            img = np.around(img).astype(np.uint8)
+            #######################################
             height, width, channel = img.shape
 
             hr = img[0:height - (height % scale), 0: width - (width % scale), :]
@@ -44,14 +47,16 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
 
             out = model(lr, th=th)
             output = out.cuda().data.cpu()
-            save_image(output, f"outputs/{image.replace('.bmp', '')}.png")
+            # save_image(output, f"outputs/{image.replace('.bmp', '')}.png")
             output = output.numpy()
 
-            hr = d2int(hr)
-            output = d2int(output)
+            output = np.clip(output, 0, 255)
+            output = np.around(output).astype(np.uint8)
 
             output = output[0]
             output = np.moveaxis(output, 0, -1)
+
+            imsave(f"outputs/{image.replace('.bmp', '')}.png", output)
 
             avg_ssim +=SSIM(output, hr, boundary)
             avg_psnr += PSNR(hr, output, boundary=boundary)
