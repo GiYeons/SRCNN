@@ -13,6 +13,28 @@ The quantize() function runs the prepare_q_weight() function; the actual quantiz
 Most of the functions were written by extracting only the necessary parts from the original code. Also, the code is still in the process of being cleaned up.
 
 
+case 1)
+
+preset:
+
+        self.wts_nbit, self.wts_fbit = 16, 8
+        
+        self.biases_nbit, self.biases_ibit = 16, 8
+        
+        self.act_nbit, self.act_fbit = 16, 8
+        
+        self.input_ibit, self.input_fbit = 16, 8  (bit_shift param)
+        
+        self.scales_nbit, self.scales_ibit = 1, 1
+
+
+Original PSNR of Set5: 37.09 / Current PSNR of Set5: 35.51
+
+![bird](https://github.com/GiYeons/SRCNN/assets/65033360/16da04fb-00b2-4fd9-ad0d-0115ee77d972)
+
+
+case 2)
+
 preset:
 
         self.wts_nbit, self.wts_fbit = 8, 4
@@ -21,12 +43,12 @@ preset:
         
         self.act_nbit, self.act_fbit = 8, 4
         
+        self.input_ibit, self.input_fbit = 8, 4  (bit_shift param)
+        
         self.scales_nbit, self.scales_ibit = 1, 1
 
   
-Original PSNR of Set5: 37.09
-
-Current PSNR of Set5: 15.81
+Original PSNR of Set5: 37.09 / Current PSNR of Set5: 15.81
 
 
 Current output images (Set5):
