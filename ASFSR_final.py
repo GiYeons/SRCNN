@@ -55,7 +55,7 @@ class Tconv_block(nn.Module):
         low = self.low_par1(x)
         low = self.low_par2(low) * inv_mask
         """
-        x = (self.sub_pixel[0](x) / 2**bit_shift) + self.bias
+        x = torch.floor(self.sub_pixel[0](x) / 2**bit_shift) + self.bias
         result = self.sub_pixel[1](x)
 
         return result
@@ -82,9 +82,9 @@ class Conv_block(nn.Module):
                 # nn.init.zeros_(m.bias.data)
 
     def forward(self, x, mask, inv_mask, bit_shift):
-        high = (self.high_par(x) / 2**bit_shift + self.high_bias) * mask
-        low = (self.low_par1(x) / 2**bit_shift + self.low1_bias) * inv_mask
-        low = self.low_par2(low) / 2**bit_shift + self.low2_bias
+        high = (torch.floor(self.high_par(x) / 2**bit_shift) + self.high_bias) * mask
+        low = (torch.floor(self.low_par1(x) / 2**bit_shift) + self.low1_bias) * inv_mask
+        low = torch.floor(self.low_par2(low) / 2**bit_shift) + self.low2_bias
 
         return (low + high)
 
@@ -117,9 +117,10 @@ class Net(nn.Module):
         # variables
         ### for preset
         self.wts_nbit, self.wts_fbit = 8, 4
-        self.biases_nbit, self.biases_ibit = 8, 4
-        self.act_nbit, self.act_fbit = 8, 4
+        self.biases_nbit, self.biases_ibit = 16, 8
+        self.act_nbit, self.act_fbit = 16, 8
         self.scales_nbit, self.scales_ibit = 1, 1
+        self.input_ibit, self.input_fbit = 16, 8
 
         ### for storage
         self.biases_fbit = self.biases_nbit - self.biases_ibit
@@ -219,8 +220,8 @@ class Net(nn.Module):
 
     # function for generating quantized weights
     def prepare_q_weight(self, scheme="uniform", wts_nbit=8, wts_fbit=4):
-        self.wts_nbit = wts_nbit
-        self.wts_fbit = wts_fbit
+        # self.wts_nbit = wts_nbit
+        # self.wts_fbit = wts_fbit
 
         #TConv에서 high, low weight를 없앴으므로 따로 처리해야 함 (작성예정)
         for i in range(len(self.all_layers) - 1):
@@ -229,7 +230,7 @@ class Net(nn.Module):
             low_wts2 = self.all_layers[i].low_par2.weight.data
 
             # test (should be modified)
-            wts_step = 2 ** -wts_fbit
+            wts_step = 2 ** -self.wts_fbit
 
             if(scheme == "none"):
                 high_weight = high_wts
@@ -237,12 +238,12 @@ class Net(nn.Module):
                 low_weight2 = low_wts2
 
             elif(scheme == "uniform"):
-                high_weight, _ = self.uniform_quantize(high_wts, wts_step, wts_nbit)
-                low_weight1, _ = self.uniform_quantize(low_wts1, wts_step, wts_nbit)
-                low_weight2, _ = self.uniform_quantize(low_wts2, wts_step, wts_nbit)
+                high_weight, _ = self.uniform_quantize(high_wts, wts_step, self.wts_nbit)
+                low_weight1, _ = self.uniform_quantize(low_wts1, wts_step, self.wts_nbit)
+                low_weight2, _ = self.uniform_quantize(low_wts2, wts_step, self.wts_nbit)
 
             elif(scheme == "scale_linear"):
-                wts_nlevel = 2 ** wts_nbit
+                wts_nlevel = 2 ** self.wts_nbit
                 output_channels = self.num_filters1     # 레이어에 따라 달리 적용해야 함
                 output, w_bonus_scale_factor = self.scale_linear_quantize(high_wts, output_channels)
 
@@ -265,7 +266,7 @@ class Net(nn.Module):
 
         # last_part
         last_wts = self.all_layers[-1].sub_pixel[0].weight.data
-        wts_step = 2 ** -wts_fbit
+        wts_step = 2 ** -self.wts_fbit
 
         print('step: ', wts_step)
 
@@ -273,7 +274,7 @@ class Net(nn.Module):
             last_weight = last_wts
 
         elif (scheme == "uniform"):
-            last_weight, _ = self.uniform_quantize(last_wts, wts_step, wts_nbit)
+            last_weight, _ = self.uniform_quantize(last_wts, wts_step, self.wts_nbit)
 
         self.origin_wts.append([last_wts, None, None])
         self.quantized_wts.append([last_weight, None, None])
@@ -289,7 +290,7 @@ class Net(nn.Module):
 
 
         # bit shift
-        self.bit_shift, self.output_fbit = self.calculate_bit_shift(8, 4)
+        self.bit_shift, self.output_fbit = self.calculate_bit_shift(self.input_ibit, self.input_fbit)
         print(self.bit_shift, self.output_fbit)
 
         # print(self.all_layers[0].high_par.weight.data)

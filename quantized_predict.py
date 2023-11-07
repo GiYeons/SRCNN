@@ -119,7 +119,7 @@ def predict(datasets, model_paths, r=[4], th=[0.04]):
             model.init_bias(biases)
 
             ## weights quantization
-            model.quantize(scheme="uniform", wts_nbit=8, wts_fbit=4)
+            model.quantize(scheme="uniform")
             # for name, param in model.named_parameters():
             #     print("파라미터 이름:", name, "파라미터", param)
 
