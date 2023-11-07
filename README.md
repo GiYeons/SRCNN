@@ -39,6 +39,28 @@ preset:
 
         self.wts_nbit, self.wts_fbit = 8, 4
         
+        self.biases_nbit, self.biases_ibit = 16, 8
+        
+        self.act_nbit, self.act_fbit = 16, 8
+        
+        self.input_ibit, self.input_fbit = 16, 8  (bit_shift param)
+        
+        self.scales_nbit, self.scales_ibit = 1, 1
+
+
+Original PSNR of Set5: 37.09 / Current PSNR of Set5: 29.63
+
+![bird](https://github.com/GiYeons/SRCNN/assets/65033360/23175d1a-0e60-4b84-8040-1c36ea6e50da)
+
+
+
+
+case 3)
+
+preset:
+
+        self.wts_nbit, self.wts_fbit = 8, 4
+        
         self.biases_nbit, self.biases_ibit = 8, 4
         
         self.act_nbit, self.act_fbit = 8, 4
