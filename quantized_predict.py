@@ -32,9 +32,10 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
             except:
                 img = np.expand_dims(img, axis=-1)
 
+            img = np.float64(img) / 255.
             ####### image quantization ############
-            img = np.clip(img, 0, 255)
-            img = np.around(img).astype(np.uint8)
+            # img = np.clip(img, 0, 255)
+            # img = np.around(img).astype(np.uint8)
             #######################################
             height, width, channel = img.shape
 
@@ -50,8 +51,10 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
             # save_image(output, f"outputs/{image.replace('.bmp', '')}.png")
             output = output.numpy()
 
-            output = np.clip(output, 0, 255)
-            output = np.around(output).astype(np.uint8)
+            hr = d2int(hr)
+            output = d2int(output)
+            # output = np.clip(output, 0, 255)
+            # output = np.around(output).astype(np.uint8)
 
             output = output[0]
             output = np.moveaxis(output, 0, -1)
@@ -118,8 +121,9 @@ def predict(datasets, model_paths, r=[4], th=[0.04]):
 
             model.init_bias(biases)
 
-            ## weights quantization
+            # weights quantization
             model.quantize(scheme="uniform")
+            model.revert()
             # for name, param in model.named_parameters():
             #     print("파라미터 이름:", name, "파라미터", param)
 

@@ -193,7 +193,6 @@ class Net(nn.Module):
         mask, inv_mask = self.create_mask(x, th, dilker, dilation)
         mask_idx, inv_mask_idx = self.get_mask_index(mask)
 
-
         x = self.relu(self.first_part(x,mask_idx, inv_mask_idx, eval=True))
         x = self.relu(self.reduction(x, mask_idx, inv_mask_idx, eval=True))
 

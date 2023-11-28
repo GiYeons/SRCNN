@@ -14,9 +14,9 @@ class Tconv_block(nn.Module):
         self.scale = scale
         # sub-pixel convolution layer
         self.ker = 3
-        self.out_c = int(out_c * (scale ** 2))
+        self.out_channels = int(out_c * (scale ** 2))
 
-        self.sub_pixel = nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=self.out_c, kernel_size=self.ker, padding=self.ker // 2, bias=False),
+        self.sub_pixel = nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=self.out_channels, kernel_size=self.ker, padding=self.ker // 2, bias=False),
                                 nn.PixelShuffle(scale))
 
         # custom bias
@@ -47,7 +47,7 @@ class Tconv_block(nn.Module):
         self.ones = nn.Parameter(data=torch.ones(size=(in_c, 1, 1, 1)).float(), requires_grad=False)
         # ===========
 
-    def forward(self, x, mask, inv_mask, bit_shift):
+    def forward(self, x, mask, inv_mask, bit_shift=0):
         # original code
         """
 
@@ -55,7 +55,9 @@ class Tconv_block(nn.Module):
         low = self.low_par1(x)
         low = self.low_par2(low) * inv_mask
         """
-        x = torch.floor(self.sub_pixel[0](x) / 2**bit_shift) + self.bias
+        x = self.sub_pixel[0](x)
+        # x = torch.floor(x / 2**bit_shift)   # if quantization schema is "none" then comment this line
+        x = x + self.bias
         result = self.sub_pixel[1](x)
 
         return result
@@ -64,6 +66,7 @@ class Tconv_block(nn.Module):
 class Conv_block(nn.Module):
     def __init__(self, in_c, out_c, ker, r):
         super(Conv_block, self).__init__()
+        self.output_channel = out_c
 
         self.high_par = nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=ker, padding=ker // 2, bias=False)
 
@@ -81,10 +84,18 @@ class Conv_block(nn.Module):
                                 std=math.sqrt(2 / (m.out_channels * m.weight.data[0][0].numel())))
                 # nn.init.zeros_(m.bias.data)
 
-    def forward(self, x, mask, inv_mask, bit_shift):
-        high = (torch.floor(self.high_par(x) / 2**bit_shift) + self.high_bias) * mask
-        low = (torch.floor(self.low_par1(x) / 2**bit_shift) + self.low1_bias) * inv_mask
-        low = torch.floor(self.low_par2(low) / 2**bit_shift) + self.low2_bias
+    def forward(self, x, mask, inv_mask, bit_shift=0):
+        high = self.high_par(x)
+        # high = torch.floor(high / 2**bit_shift)     # comment
+        high = (high + self.high_bias) * mask
+
+        low = self.low_par1(x)
+        # low = torch.floor(low / 2**bit_shift)       # comment
+        low = (low + self.low1_bias) * inv_mask
+
+        low = self.low_par2(low)
+        # low = torch.floor(low / 2**bit_shift)       # comment
+        low = low + self.low2_bias
 
         return (low + high)
 
@@ -117,14 +128,16 @@ class Net(nn.Module):
         # variables
         ### for preset
         self.wts_nbit, self.wts_fbit = 8, 4
-        self.biases_nbit, self.biases_ibit = 16, 8
-        self.act_nbit, self.act_fbit = 16, 8
+        self.biases_nbit, self.biases_ibit = 8, 4
+        self.act_nbit, self.act_fbit = 8, 4
         self.scales_nbit, self.scales_ibit = 1, 1
-        self.input_ibit, self.input_fbit = 16, 8
+        self.input_ibit, self.input_fbit = 8, 0 # initial setting (before first conv)
 
         ### for storage
         self.biases_fbit = self.biases_nbit - self.biases_ibit
-        self.bit_shift, self.output_fbit = 0, 0
+        self.bit_shift = [0, 0, 0, 0, 0, 0, 0, 0]
+        self.output_fbit = []
+
         self.origin_wts = []
         self.quantized_wts = []
         self.origin_biases = []
@@ -218,18 +231,25 @@ class Net(nn.Module):
             self.all_layers[i].low_par2.weight.data = self.origin_wts[i][2]
             self.all_layers[i].cuda()
 
+            self.all_layers[i].high_bias = self.origin_biases[i][0]
+            self.all_layers[i].low1_bias = self.origin_biases[i][1]
+            self.all_layers[i].low2_bias = self.origin_biases[i][2]
+
+        # last layer
+        self.all_layers[-1].sub_pixel[0].weight.data = self.origin_wts[-1][0]
+        self.all_layers[-1].bias = self.quantized_biases[-1][0]
+
     # function for generating quantized weights
     def prepare_q_weight(self, scheme="uniform", wts_nbit=8, wts_fbit=4):
         # self.wts_nbit = wts_nbit
         # self.wts_fbit = wts_fbit
 
-        #TConv에서 high, low weight를 없앴으므로 따로 처리해야 함 (작성예정)
+        #TConv의 last part는 제외하고 처리한다
         for i in range(len(self.all_layers) - 1):
             high_wts = self.all_layers[i].high_par.weight.data
             low_wts1 = self.all_layers[i].low_par1.weight.data
             low_wts2 = self.all_layers[i].low_par2.weight.data
 
-            # test (should be modified)
             wts_step = 2 ** -self.wts_fbit
 
             if(scheme == "none"):
@@ -244,8 +264,9 @@ class Net(nn.Module):
 
             elif(scheme == "scale_linear"):
                 wts_nlevel = 2 ** self.wts_nbit
-                output_channels = self.num_filters1     # 레이어에 따라 달리 적용해야 함
-                output, w_bonus_scale_factor = self.scale_linear_quantize(high_wts, output_channels)
+                output_channels = self.all_layers[i].output_channel
+                output, w_bonus_scale_factor = self.scale_linear_quantize(high_wts, output_channels, wts_nlevel / 2)
+                print(output, w_bonus_scale_factor)
 
             self.origin_wts.append([high_wts, low_wts1, low_wts2])
             self.quantized_wts.append([high_weight, low_weight1, low_weight2])
@@ -267,8 +288,6 @@ class Net(nn.Module):
         # last_part
         last_wts = self.all_layers[-1].sub_pixel[0].weight.data
         wts_step = 2 ** -self.wts_fbit
-
-        print('step: ', wts_step)
 
         if(scheme == "none"):
             last_weight = last_wts
@@ -306,11 +325,25 @@ class Net(nn.Module):
 
         return output, output_store
 
-    def scale_linear_quantize(self, wts, n_out_channel, n_coff):
-        nwts = torch.numel(wts)
-        nwts_per_channel = nwts / n_out_channel
+    def scale_linear_quantize(self, x, n_out_channel, n_coeff):
+        nx = x.numel()
+        nx_per_channel = nx // n_out_channel
 
         scale_factor = torch.zeros(n_out_channel)
+        output = torch.zeros_like(x)
+
+        for i in range(n_out_channel):
+            cur_channel = x[(i * nx_per_channel):((i + 1) * nx_per_channel)]
+
+            cur_max = torch.max(torch.abs(cur_channel))
+            scale_factor[i] = cur_max
+
+            mask = cur_channel > 0
+            qtz_value = torch.round(cur_channel / cur_max * n_coeff + 0.5) - 0.5
+            qtz_value = torch.clamp(qtz_value, min=0.5, max=n_coeff - 0.5)
+            output[i * nx_per_channel:(i + 1) * nx_per_channel] = torch.where(mask, qtz_value * 2, -qtz_value * 2)
+
+        return output, scale_factor
 
         # should be modified
 
@@ -334,23 +367,30 @@ class Net(nn.Module):
 
     def calculate_bit_shift(self, input_ibit, input_fbit):
         scheme = "uniform"  # test
-        activation = "float_relu"
+        activation = "relu"
 
-        if(scheme == "none"):
-            wts_fbit = 0
-        elif(scheme == "uniform"):
-            wts_fbit = self.wts_fbit + 1
+        bit_shift = []
+        output_fbit = []
 
-        scales_fbit = self.scales_nbit - self.scales_ibit
-        biases_fbit = self.biases_nbit - self.biases_ibit
+        for i in range(len(self.all_layers)):
 
-        bit_shift = input_fbit + wts_fbit + scales_fbit - biases_fbit
+            if(scheme == "none"):
+                wts_fbit = 0
+            elif(scheme == "uniform"):
+                wts_fbit = self.wts_fbit + 1
 
-        if(activation == "float_relu"):
-            act_fbit = biases_fbit
+            scales_fbit = self.scales_nbit - self.scales_ibit
+            biases_fbit = self.biases_nbit - self.biases_ibit
 
-        output_fbit = act_fbit
-        input_fbit = act_fbit
+            bit_shift.append(input_fbit + wts_fbit + scales_fbit - biases_fbit)
+
+            if(activation == "float_relu"):
+                act_fbit = biases_fbit
+            else:
+                act_fbit = self.act_fbit
+
+            output_fbit.append(act_fbit)
+            input_fbit = act_fbit
 
         return bit_shift, output_fbit
 
@@ -364,35 +404,37 @@ class Net(nn.Module):
         return activations
 
 
-    def forward(self, x, th=0.04, dilker=3, dilation=True, eval=False):
+    def forward(self, x, th=0.04, dilker=3, dilation=True):
 
         mask, inv_mask = self.create_mask(x, th, dilker, dilation)
+        act_step = 2** -self.act_fbit
 
         orix = x
 
-        x = self.relu_quantize(self.first_part(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        # x = self.relu_quantize(self.first_part(x, mask, inv_mask, self.bit_shift[0]), act_step, self.act_nbit, self.biases_fbit)
+        # x = self.relu_quantize(self.reduction(x, mask, inv_mask, self.bit_shift[1]), act_step, self.act_nbit, self.biases_fbit)
+        #
+        # x = self.relu_quantize(self.mid_part1(x, mask, inv_mask, self.bit_shift[2]), act_step, self.act_nbit, self.biases_fbit)
+        # x = self.relu_quantize(self.mid_part2(x, mask, inv_mask, self.bit_shift[3]), act_step, self.act_nbit, self.biases_fbit)
+        # x = self.relu_quantize(self.mid_part3(x, mask, inv_mask, self.bit_shift[4]), act_step, self.act_nbit, self.biases_fbit)
+        # x = self.relu_quantize(self.mid_part4(x, mask, inv_mask, self.bit_shift[5]), act_step, self.act_nbit, self.biases_fbit)
+        #
+        # x = self.relu_quantize(self.expansion(x, mask, inv_mask, self.bit_shift[6]), act_step, self.act_nbit, self.biases_fbit)
+        x = self.relu(self.first_part(x, mask, inv_mask))
         # insert activation quantization function?
-        x = self.relu_quantize(self.reduction(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu(self.reduction(x, mask, inv_mask))
 
-        x = self.relu_quantize(self.mid_part1(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        x = self.relu_quantize(self.mid_part2(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        x = self.relu_quantize(self.mid_part3(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        x = self.relu_quantize(self.mid_part4(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
+        x = self.relu(self.mid_part1(x, mask, inv_mask))
+        x = self.relu(self.mid_part2(x, mask, inv_mask))
+        x = self.relu(self.mid_part3(x, mask, inv_mask))
+        x = self.relu(self.mid_part4(x, mask, inv_mask))
 
-        x = self.relu_quantize(self.expansion(x, mask, inv_mask, self.bit_shift), 2**-self.act_fbit, self.act_nbit, self.biases_fbit)
-        # x = self.relu(self.first_part(x, mask, inv_mask, eval=False))
-        # # insert activation quantization function?
-        # x = self.relu(self.reduction(x, mask, inv_mask, eval=False))
-        #
-        # x = self.relu(self.mid_part1(x, mask, inv_mask, eval=False))
-        # x = self.relu(self.mid_part2(x, mask, inv_mask, eval=False))
-        # x = self.relu(self.mid_part3(x, mask, inv_mask, eval=False))
-        # x = self.relu(self.mid_part4(x, mask, inv_mask, eval=False))
-        #
-        # x = self.relu(self.expansion(x, mask, inv_mask, eval=False))
+        x = self.relu(self.expansion(x, mask, inv_mask))
 
         mask, inv_mask = self.upsample_mask(mask)
-        y = self.last_part(x, mask, inv_mask, self.bit_shift)
+
+        y = self.last_part(x, mask, inv_mask)
+        # y = self.last_part(x, mask, inv_mask, self.bit_shift[7])
 
 
 

@@ -12,7 +12,7 @@ from torchvision.utils import save_image
 from torchsummary import summary as summary
 
 # import the network we want to predict for
-from ASFSR_final import Net
+from baseline import Net
 
 testWord = 'bird'   # line22, 134
 
@@ -53,12 +53,12 @@ def val_psnr(model, th, dilker, dilation, val_path, scale, boundary, psnrs):
             output = np.moveaxis(output, 0, -1)
 
             avg_ssim +=SSIM(output, hr, boundary)
-            # avg_psnr += PSNR(hr, output, boundary=boundary)
-            # print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=boundary))
-            # psnrs.append(PSNR(hr, output, boundary=boundary))
-            avg_psnr += PSNR_specific(hr, output, image, boundary=boundary)
-            print(SSIM(output, hr, scale), "/", PSNR_specific(hr, output, image, boundary=boundary))
-            psnrs.append(PSNR_specific(hr, output, image, boundary=boundary))
+            avg_psnr += PSNR(hr, output, boundary=boundary)
+            print(SSIM(output, hr, scale), "/", PSNR(hr, output, boundary=boundary))
+            psnrs.append(PSNR(hr, output, boundary=boundary))
+            # avg_psnr += PSNR_specific(hr, output, image, boundary=boundary)
+            # print(SSIM(output, hr, scale), "/", PSNR_specific(hr, output, image, boundary=boundary))
+            # psnrs.append(PSNR_specific(hr, output, image, boundary=boundary))
 
     # print(round(avg_ssim/len(images), 4), end=' ')
     return avg_psnr/len(images), avg_ssim/len(images)
@@ -128,8 +128,8 @@ if __name__=="__main__":
     device = torch.device('cuda')
 
     set = 'Set5/'
-    psnrs4 = predict([set], ['final'], r=4, th=0.04)
-    # psnrs16 = predict([set], ['2path2'], r=8, th=0.04)
+    psnrs4 = predict([set], ['baseline'], r=4, th=0.04)
+    # psnrs8 = predict([set], ['2path2'], r=8, th=0.04)
     # psnr_3path = predict([set], ['3path3'], r=[4, 8], th=[0.04, 0.02])
     # psnr_4path = predict([set], ['4path6'], r=[2, 8, 16], th=[0.06, 0.04, 0.02])
     # psnr_5path = predict([set], ['5path2'], r=[2, 4, 8, 16], th=[0.075, 0.04, 0.02, 0.01])
