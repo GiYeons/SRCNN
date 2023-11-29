@@ -56,7 +56,7 @@ class Tconv_block(nn.Module):
         low = self.low_par2(low) * inv_mask
         """
         x = self.sub_pixel[0](x)
-        # x = torch.floor(x / 2**bit_shift)   # if quantization schema is "none" then comment this line
+        x = torch.floor(x / 2**bit_shift)   # if quantization schema is "none" then comment this line
         x = x + self.bias
         result = self.sub_pixel[1](x)
 
@@ -86,15 +86,15 @@ class Conv_block(nn.Module):
 
     def forward(self, x, mask, inv_mask, bit_shift=0):
         high = self.high_par(x)
-        # high = torch.floor(high / 2**bit_shift)     # comment
+        high = torch.floor(high / 2**bit_shift)     # comment
         high = (high + self.high_bias) * mask
 
         low = self.low_par1(x)
-        # low = torch.floor(low / 2**bit_shift)       # comment
+        low = torch.floor(low / 2**bit_shift)       # comment
         low = (low + self.low1_bias) * inv_mask
 
         low = self.low_par2(low)
-        # low = torch.floor(low / 2**bit_shift)       # comment
+        low = torch.floor(low / 2**bit_shift)       # comment
         low = low + self.low2_bias
 
         return (low + high)
@@ -127,15 +127,15 @@ class Net(nn.Module):
         )
         # variables
         ### for preset
-        self.wts_nbit, self.wts_fbit = 8, 4
-        self.biases_nbit, self.biases_ibit = 8, 4
-        self.act_nbit, self.act_fbit = 8, 4
+        self.wts_nbit, self.wts_fbit = 16, 8
+        self.biases_nbit, self.biases_ibit = 16, 8
+        self.act_nbit, self.act_fbit = 16, 8
         self.scales_nbit, self.scales_ibit = 1, 1
-        self.input_ibit, self.input_fbit = 8, 0 # initial setting (before first conv)
+        self.input_ibit, self.input_fbit = 8, 8 # initial setting (before first conv)
 
         ### for storage
         self.biases_fbit = self.biases_nbit - self.biases_ibit
-        self.bit_shift = [0, 0, 0, 0, 0, 0, 0, 0]
+        self.bit_shift = []
         self.output_fbit = []
 
         self.origin_wts = []
@@ -411,30 +411,30 @@ class Net(nn.Module):
 
         orix = x
 
-        # x = self.relu_quantize(self.first_part(x, mask, inv_mask, self.bit_shift[0]), act_step, self.act_nbit, self.biases_fbit)
-        # x = self.relu_quantize(self.reduction(x, mask, inv_mask, self.bit_shift[1]), act_step, self.act_nbit, self.biases_fbit)
-        #
-        # x = self.relu_quantize(self.mid_part1(x, mask, inv_mask, self.bit_shift[2]), act_step, self.act_nbit, self.biases_fbit)
-        # x = self.relu_quantize(self.mid_part2(x, mask, inv_mask, self.bit_shift[3]), act_step, self.act_nbit, self.biases_fbit)
-        # x = self.relu_quantize(self.mid_part3(x, mask, inv_mask, self.bit_shift[4]), act_step, self.act_nbit, self.biases_fbit)
-        # x = self.relu_quantize(self.mid_part4(x, mask, inv_mask, self.bit_shift[5]), act_step, self.act_nbit, self.biases_fbit)
-        #
-        # x = self.relu_quantize(self.expansion(x, mask, inv_mask, self.bit_shift[6]), act_step, self.act_nbit, self.biases_fbit)
-        x = self.relu(self.first_part(x, mask, inv_mask))
-        # insert activation quantization function?
-        x = self.relu(self.reduction(x, mask, inv_mask))
+        x = self.relu_quantize(self.first_part(x, mask, inv_mask, self.bit_shift[0]), act_step, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.reduction(x, mask, inv_mask, self.bit_shift[1]), act_step, self.act_nbit, self.biases_fbit)
 
-        x = self.relu(self.mid_part1(x, mask, inv_mask))
-        x = self.relu(self.mid_part2(x, mask, inv_mask))
-        x = self.relu(self.mid_part3(x, mask, inv_mask))
-        x = self.relu(self.mid_part4(x, mask, inv_mask))
+        x = self.relu_quantize(self.mid_part1(x, mask, inv_mask, self.bit_shift[2]), act_step, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part2(x, mask, inv_mask, self.bit_shift[3]), act_step, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part3(x, mask, inv_mask, self.bit_shift[4]), act_step, self.act_nbit, self.biases_fbit)
+        x = self.relu_quantize(self.mid_part4(x, mask, inv_mask, self.bit_shift[5]), act_step, self.act_nbit, self.biases_fbit)
 
-        x = self.relu(self.expansion(x, mask, inv_mask))
+        x = self.relu_quantize(self.expansion(x, mask, inv_mask, self.bit_shift[6]), act_step, self.act_nbit, self.biases_fbit)
+        # x = self.relu(self.first_part(x, mask, inv_mask))
+        # # insert activation quantization function?
+        # x = self.relu(self.reduction(x, mask, inv_mask))
+        #
+        # x = self.relu(self.mid_part1(x, mask, inv_mask))
+        # x = self.relu(self.mid_part2(x, mask, inv_mask))
+        # x = self.relu(self.mid_part3(x, mask, inv_mask))
+        # x = self.relu(self.mid_part4(x, mask, inv_mask))
+        #
+        # x = self.relu(self.expansion(x, mask, inv_mask))
 
         mask, inv_mask = self.upsample_mask(mask)
 
-        y = self.last_part(x, mask, inv_mask)
-        # y = self.last_part(x, mask, inv_mask, self.bit_shift[7])
+        # y = self.last_part(x, mask, inv_mask)
+        y = self.last_part(x, mask, inv_mask, self.bit_shift[7])
 
 
 
