@@ -159,10 +159,6 @@ class Conv_block(nn.Module):
         low_wts1 = self.low_par1.weight.data
         low_wts2 = self.low_par2.weight.data
 
-        # print(torch.max(high_wts), torch.min(high_wts))
-        # print(torch.max(low_wts1), torch.min(low_wts1))
-        # print(torch.max(low_wts2), torch.min(low_wts2))
-
         if self.scheme == "uniform":
             high_weight = uniform_quantize(high_wts, 2 ** -self.wts_fbit, self.wts_nbit)
             low_weight1 = uniform_quantize(low_wts1, 2 ** -self.wts_fbit, self.wts_nbit)
@@ -247,7 +243,7 @@ class Net(nn.Module):
         self.quantized_wts = []
         self.origin_biases = []
         self.quantized_biases = []
-        self.input_nbit, self.input_fbit = 8, 0
+        self.input_nbit, self.input_fbit = 8, 8
 
     def create_mask(self, x, th, dilker, dilation=True):
         blur = F.avg_pool2d(x, kernel_size=3, stride=1, padding=3//2, count_include_pad=False)
@@ -328,7 +324,5 @@ class Net(nn.Module):
 
         mask, inv_mask = self.upsample_mask(mask)
         y = self.last_part(x, mask, inv_mask, self.expansion.act_fbit)
-
-        y /= 2 ** self.last_part.biases_fbit
 
         return y
