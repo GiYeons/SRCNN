@@ -12,6 +12,11 @@ The quantize() function runs the prepare_q_weight() function; the actual quantiz
 
 Most of the functions were written by extracting only the necessary parts from the original code. Also, the code is still in the process of being cleaned up.
 
+    
+----------------
++) ASFSR_quantize_layerwise.py과 ASFSR_quantize_layerwise.py 파일은 레이어별로 다른 설정값을 사용하여 quantization할 수 있도록 수정된 파일입니다.
+
+
 
 case 1)
 
